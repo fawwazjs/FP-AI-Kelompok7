@@ -1,0 +1,43 @@
+# Dependency directories
+node_modules/
+frontend/node_modules/
+
+# Next.js build outputs
+.next/
+frontend/.next/
+out/
+frontend/out/
+
+# Python Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+backend/__pycache__/
+
+# Local SQLite Database
+heritageguard.db
+*.db
+*.sqlite3
+
+# Temp processing directories
+temp_uploads/
+temp_outputs/
+backend/temp_uploads/
+backend/temp_outputs/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db

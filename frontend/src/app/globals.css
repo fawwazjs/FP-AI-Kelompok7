@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1F5E4A;
+  --color-primary-light: #2c7a62;
+  --color-primary-glow: rgba(31, 94, 74, 0.1);
+  --color-primary-transparent: rgba(31, 94, 74, 0.05);
+  --color-bg-cream: #F8F6F2;
+  --color-accent-brown: #8B6B4A;
+  --color-accent-brown-light: #A38260;
+  --color-accent-gold: #D4A64A;
+  --color-accent-gold-glow: rgba(212, 166, 74, 0.2);
+  --color-neutral-light: #F1F3F4;
+  --color-text-dark: #1A1A1A;
+  --color-text-medium: #51635A;
+  --color-text-muted: #7D8F86;
+  --color-border-color: #E6ECE8;
+  
+  --font-heading: 'Poppins', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+  
+  --shadow-sm: 0 2px 4px rgba(31, 94, 74, 0.04);
+  --shadow-md: 0 8px 16px rgba(31, 94, 74, 0.06);
+  --shadow-lg: 0 16px 32px rgba(31, 94, 74, 0.08);
+  --shadow-premium: 0 24px 48px rgba(31, 94, 74, 0.12);
+  
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 30px;
+}
+
+/* Custom Base Styles */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-cream);
+  color: var(--color-text-dark);
+  line-height: 1.6;
+  position: relative;
+  min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('/assets/batik_pattern.png');
+  background-size: 800px;
+  background-position: right top;
+  background-repeat: no-repeat;
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: -1;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--color-primary);
+  line-height: 1.25;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-cream);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent-brown);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Custom Transition helper */
+.smooth-transition {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
