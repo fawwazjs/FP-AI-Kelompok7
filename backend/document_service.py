@@ -1,7 +1,8 @@
 # HeritageGuard Document Parsing & Reconstruction Engine
 # Handles PDF (PyMuPDF) and DOCX (python-docx) translations.
 
-import os
+import textwrap
+
 from .translator_service import translate_and_classify
 
 try:
@@ -61,12 +62,15 @@ def process_and_translate_pdf(input_path: str, output_path: str, target_lang: st
         else:
             translated_chunks.append('')
 
-    with open(output_path, 'w') as f:
-        f.write(f"=== HERITAGEGUARD TRANSLATED PDF SUMMARY ===\n")
-        f.write(f"Bahasa Target: {target_lang}\n")
-        f.write(f"Jumlah Kata: {words}\n")
-        f.write(f"============================================\n\n")
-        f.write("\n\n".join(translated_chunks))
+    output_text = "\n\n".join(
+        [
+            "HERITAGEGUARD TRANSLATED PDF SUMMARY",
+            f"Bahasa Target: {target_lang}",
+            f"Jumlah Kata: {words}",
+            "\n\n".join(translated_chunks),
+        ]
+    )
+    _write_pdf_text(output_path, output_text)
 
     return summary_info
 
@@ -109,3 +113,26 @@ def process_and_translate_docx(input_path: str, output_path: str, target_lang: s
     new_doc.save(output_path)
     summary_info["words_translated"] = total_words
     return summary_info
+
+
+def _write_pdf_text(output_path: str, text: str) -> None:
+    doc = fitz.open()
+    page = doc.new_page()
+    margin = 48
+    y = margin
+    line_height = 15
+    max_y = page.rect.height - margin
+
+    for raw_line in text.splitlines() or [""]:
+        wrapped_lines = textwrap.wrap(raw_line, width=88) or [""]
+        for line in wrapped_lines:
+            if y > max_y:
+                page = doc.new_page()
+                y = margin
+                max_y = page.rect.height - margin
+            page.insert_text((margin, y), line, fontsize=11)
+            y += line_height
+        y += 4
+
+    doc.save(output_path)
+    doc.close()

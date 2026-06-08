@@ -22,12 +22,12 @@ import {
   Menu,
   X,
   Play,
-  Check,
-  AlertCircle
 } from 'lucide-react';
 
 // --- TYPE DEFINITIONS & LOCAL DATA ---
 type PageType = 'landing' | 'translator' | 'doc-translator' | 'insights' | 'about';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 interface TranslationResult {
   translatedText: string;
@@ -37,6 +37,50 @@ interface TranslationResult {
   context: string;
   alternativeText?: string;
 }
+
+interface InsightsData {
+  metrics: {
+    total_vocabulary: number;
+    active_contributors: number;
+    vitality_status: string;
+    preservation_accuracy: string | null;
+    total_translations: number;
+  };
+  popular_words: Array<{
+    word: string;
+    language: string;
+    count: number;
+  }>;
+  vitality_trends: {
+    years: string[];
+    jv_scores: number[];
+    mad_scores: number[];
+  };
+}
+
+const EMPTY_INSIGHTS: InsightsData = {
+  metrics: {
+    total_vocabulary: 0,
+    active_contributors: 0,
+    vitality_status: 'Belum diukur',
+    preservation_accuracy: null,
+    total_translations: 0
+  },
+  popular_words: [],
+  vitality_trends: {
+    years: [],
+    jv_scores: [],
+    mad_scores: []
+  }
+};
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  id: 'Indonesia',
+  jv: 'Jawa',
+  mad: 'Madura'
+};
+
+const formatNumber = (value: number) => new Intl.NumberFormat('id-ID').format(value);
 
 const LOCAL_PHRASES: Record<string, Record<string, { high: string; low: string; context: string; altHigh?: string; altLow?: string }>> = {
   'id_jv': {
@@ -203,6 +247,9 @@ export default function HeritageGuardApp() {
   // --- WORD OF THE DAY STATE ---
   const [wotdIndex, setWotdIndex] = useState(0);
 
+  // --- INSIGHTS STATE ---
+  const [insightsData, setInsightsData] = useState<InsightsData>(EMPTY_INSIGHTS);
+
   // Auto cycle word of the day
   useEffect(() => {
     const timer = setInterval(() => {
@@ -231,6 +278,26 @@ export default function HeritageGuardApp() {
     handleHash();
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
+
+  useEffect(() => {
+    if (activePage !== 'insights') return;
+
+    const controller = new AbortController();
+
+    fetch(`${API_BASE_URL}/api/insights`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error('Insights API server returned error');
+        return response.json();
+      })
+      .then((data: InsightsData) => setInsightsData(data))
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setInsightsData(EMPTY_INSIGHTS);
+        }
+      });
+
+    return () => controller.abort();
+  }, [activePage]);
 
   // Sync state pages
   const handleNavigate = (page: PageType) => {
@@ -271,14 +338,11 @@ export default function HeritageGuardApp() {
     // 2. Word-by-word Translation
     const dict = target === 'jv' ? ID_TO_JV_WORDS : ID_TO_MAD_WORDS;
     const words = text.split(/\s+/);
-    let translatedCount = 0;
-
     const translated = words.map(word => {
       const cleanW = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
       const punctuation = word.slice(cleanW.length);
 
       if (dict[cleanW]) {
-        translatedCount++;
         let replacement = level === 'high' ? dict[cleanW].high : dict[cleanW].low;
         if (word[0] === word[0].toUpperCase()) {
           replacement = replacement.charAt(0).toUpperCase() + replacement.slice(1);
@@ -340,7 +404,7 @@ export default function HeritageGuardApp() {
 
     try {
       // API call to FastAPI backend
-      const response = await fetch('http://127.0.0.1:8000/api/translate', {
+      const response = await fetch(`${API_BASE_URL}/api/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -364,7 +428,7 @@ export default function HeritageGuardApp() {
       } else {
         throw new Error('API server returned error');
       }
-    } catch (e) {
+    } catch {
       // Offline fallback
       const offlineResult = performOfflineTranslation(textVal, sourceLang, targetLang, targetLevel);
       setTranslatedText(offlineResult.translatedText);
@@ -504,6 +568,8 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
     document.body.removeChild(link);
     triggerToast('Unduhan berkas dimulai!', 'download');
   };
+
+  const insightMetrics = insightsData.metrics;
 
   return (
     <div className="flex flex-col min-height-screen bg-bg-cream text-text-dark font-sans relative antialiased">
@@ -942,7 +1008,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
               <div>
                 <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kosakata Terjaga</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">25,480+</p>
+                <p className="font-heading font-bold text-xl text-text-dark">{formatNumber(insightMetrics.total_vocabulary)}</p>
               </div>
             </div>
 
@@ -952,7 +1018,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
               <div>
                 <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kontributor Aktif</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">1,240</p>
+                <p className="font-heading font-bold text-xl text-text-dark">{formatNumber(insightMetrics.active_contributors)}</p>
               </div>
             </div>
 
@@ -962,7 +1028,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
               <div>
                 <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Indeks Kesehatan</h5>
-                <p className="font-heading font-bold text-xl text-primary">Stabil</p>
+                <p className="font-heading font-bold text-xl text-primary">{insightMetrics.vitality_status}</p>
               </div>
             </div>
 
@@ -972,7 +1038,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
               <div>
                 <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kombinasi Akurasi</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">94.8%</p>
+                <p className="font-heading font-bold text-xl text-text-dark">{insightMetrics.preservation_accuracy ?? 'Belum diukur'}</p>
               </div>
             </div>
           </div>
@@ -1003,38 +1069,24 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
             <div className="bg-white border border-border-color rounded-3xl p-6 shadow-md flex flex-col justify-between">
               <h3 className="font-heading font-bold text-lg text-primary mb-4">Kosakata Terpopuler</h3>
               <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Tindak</h4>
-                    <p className="text-[11px] text-text-muted">Jawa Krama &rarr; Pergi</p>
+                {insightsData.popular_words.length === 0 && (
+                  <div className="bg-bg-cream border border-border-color px-4 py-3 rounded-lg text-xs text-text-muted">
+                    Belum ada data kosakata dari penerjemahan.
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">1.4k pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Krama Halus</span>
-                  </div>
-                </div>
+                )}
 
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Neddha</h4>
-                    <p className="text-[11px] text-text-muted">Madura Formal &rarr; Makan</p>
+                {insightsData.popular_words.slice(0, 3).map((item) => (
+                  <div key={`${item.language}-${item.word}`} className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
+                    <div>
+                      <h4 className="font-heading font-semibold text-sm capitalize">{item.word}</h4>
+                      <p className="text-[11px] text-text-muted">Bahasa {LANGUAGE_LABELS[item.language] ?? item.language}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-primary">{formatNumber(item.count)} pencarian</div>
+                      <span className="text-[9px] font-semibold text-accent-brown">Data aktual</span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">920 pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Engghi-Bhanten</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Sego / Sekul</h4>
-                    <p className="text-[11px] text-text-muted">Jawa &rarr; Nasi</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">880 pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Ngoko / Krama</span>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 

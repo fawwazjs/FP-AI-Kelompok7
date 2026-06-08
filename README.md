@@ -25,7 +25,10 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 ## ⚙️ Spesifikasi Teknologi (Tech Stack)
 * **Frontend**: Next.js 16+ (React 19, TypeScript, Tailwind CSS v4, Lucide React Icons)
 * **Backend**: FastAPI (Python 3.12+, Uvicorn Server)
-* **Database**: SQLite (via SQLAlchemy ORM)
+* **Database**: PostgreSQL (via SQLAlchemy ORM)
+* **Cache Opsional**: Redis untuk cache terdistribusi saat trafik mulai naik
+* **Reverse Proxy**: NGINX untuk routing lokal, batas ukuran upload, dan header HTTP
+* **Observability**: Prometheus + Grafana OSS untuk metrik request dan latensi
 * **Pemrosesan Dokumen**: PyMuPDF (untuk PDF) & python-docx (untuk DOCX)
 
 ---
@@ -58,11 +61,27 @@ cd FP-AI-Kelompok7
 ### Langkah 2: Setup & Jalankan Backend (FastAPI)
 Buka terminal baru (**Tab 1**), masuk ke root folder proyek, lalu lakukan setup environment Python:
 
-1. **Buat Virtual Environment (venv)**:
+1. **Buat konfigurasi environment**:
+   ```bash
+   cp .env.example .env
+   ```
+   Ubah nilai `POSTGRES_PASSWORD` dan `DATABASE_URL` di `.env` agar memakai password lokal Anda.
+
+2. **Jalankan PostgreSQL lokal**:
+   ```bash
+   docker compose up -d postgres
+   ```
+   Jika ingin menjalankan komponen opsional untuk observability/proxy/cache:
+   ```bash
+   docker compose up -d postgres redis nginx prometheus grafana
+   ```
+   NGINX tersedia di `http://localhost:8080`, Prometheus di `http://localhost:9090`, dan Grafana di `http://localhost:3001`.
+
+3. **Buat Virtual Environment (venv)**:
    ```bash
    python3 -m venv venv
    ```
-2. **Aktifkan Virtual Environment**:
+4. **Aktifkan Virtual Environment**:
    * **Linux/macOS**:
      ```bash
      source venv/bin/activate
@@ -71,15 +90,17 @@ Buka terminal baru (**Tab 1**), masuk ke root folder proyek, lalu lakukan setup 
      ```cmd
      .\venv\Scripts\activate
      ```
-3. **Instal Library Pendukung**:
+5. **Instal Library Pendukung**:
    ```bash
    pip install -r backend/requirements.txt
    ```
-4. **Jalankan Server FastAPI**:
+6. **Jalankan Server FastAPI**:
    ```bash
    uvicorn backend.main:app --port 8000 --reload
    ```
    *Backend kini berjalan aktif di alamat: `http://127.0.0.1:8000`*
+
+Endpoint metrik backend tersedia di `http://127.0.0.1:8000/metrics` dan dipakai Prometheus.
 
 ---
 
@@ -99,6 +120,11 @@ Buka jendela terminal baru lagi (**Tab 2**), masuk ke folder frontend, lalu laku
    npm run dev
    ```
    *Frontend kini berjalan aktif di alamat: `http://localhost:3000`*
+
+Jika backend berjalan di host berbeda, buat `frontend/.env.local` dan set:
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+```
 
 ---
 
