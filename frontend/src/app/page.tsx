@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Languages,
   ArrowLeftRight,
@@ -22,7 +22,6 @@ import {
   Menu,
   X,
   Play,
-  Check,
   AlertCircle,
   Sun,
   Moon
@@ -39,6 +38,19 @@ interface TranslationResult {
   context: string;
   alternativeText?: string;
 }
+
+interface DocumentTranslationResult {
+  filename: string;
+  downloadUrl: string;
+  translatedText: string;
+  previewTruncated: boolean;
+  wordsTranslated: number;
+  politenessSummary: string;
+  sourceLang: string;
+  targetLang: string;
+}
+
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
 const LOCAL_PHRASES: Record<string, Record<string, { high: string; low: string; context: string; altHigh?: string; altLow?: string }>> = {
   'id_jv': {
@@ -183,20 +195,21 @@ export default function HeritageGuardApp() {
   const [activePage, setActivePage] = useState<PageType>('landing');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; icon: string } | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-
-  // Load and apply theme on start
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
-      setTheme('dark');
+    return savedTheme === 'dark' || (!savedTheme && systemPrefersDark) ? 'dark' : 'light';
+  });
+
+  // Keep DOM theme class in sync with state.
+  useEffect(() => {
+    if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
-      setTheme('light');
       document.documentElement.classList.remove('dark');
     }
-  }, []);
+  }, [theme]);
 
   const toggleTheme = () => {
     if (theme === 'light') {
@@ -224,10 +237,19 @@ export default function HeritageGuardApp() {
 
   // --- DOCUMENT STATE ---
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [docSourceLang, setDocSourceLang] = useState('id');
   const [docTargetLang, setDocTargetLang] = useState('jv');
+  const [docTargetLevel, setDocTargetLevel] = useState<'low' | 'high'>('high');
   const [docProgress, setDocProgress] = useState(-1); // -1 = not started
   const [docProgressStep, setDocProgressStep] = useState('');
   const [docTranslatedName, setDocTranslatedName] = useState('');
+  const [docDownloadUrl, setDocDownloadUrl] = useState('');
+  const [docTranslatedText, setDocTranslatedText] = useState('');
+  const [docPreviewTruncated, setDocPreviewTruncated] = useState(false);
+  const [docWordsTranslated, setDocWordsTranslated] = useState(0);
+  const [docPolitenessSummary, setDocPolitenessSummary] = useState('');
+  const [docError, setDocError] = useState('');
+  const [docDownloading, setDocDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- WORD OF THE DAY STATE ---
@@ -358,7 +380,9 @@ export default function HeritageGuardApp() {
       return {
         language: 'Madura',
         register: 'Enja-Iya',
-        explanation: 'Teks menggunakan ragam Madura Enja-Iya (tingkat tutur kasual sehari-hari).'
+        explanation: hasEnjaIya
+          ? 'Teks menggunakan ragam Madura Enja-Iya (tingkat tutur kasual sehari-hari).'
+          : 'Teks cenderung menggunakan ragam Madura Enja-Iya berdasarkan kosakata yang tersedia.'
       };
     }
   };
@@ -367,7 +391,7 @@ export default function HeritageGuardApp() {
     if (!detectorInput.trim()) return;
     setLoadingDetect(true);
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/detect-register', {
+      const response = await fetch(`${API_BASE_URL}/api/detect-register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: detectorInput })
@@ -379,7 +403,7 @@ export default function HeritageGuardApp() {
       } else {
         throw new Error('Server returned error');
       }
-    } catch (e) {
+    } catch {
       const result = performOfflineDetection(detectorInput);
       setDetectorResult(result);
       triggerToast('Analisis selesai (Offline Mode)', 'info');
@@ -422,7 +446,7 @@ export default function HeritageGuardApp() {
   };
 
   // --- OFFLINE/FALLBACK TRANSLATOR LOGIC ---
-  const performOfflineTranslation = (text: string, src: string, target: string, level: 'low' | 'high'): TranslationResult => {
+  const performOfflineTranslation = useCallback((text: string, src: string, target: string, level: 'low' | 'high'): TranslationResult => {
     const clean = text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
     const key = `${src}_${target}`;
 
@@ -444,14 +468,11 @@ export default function HeritageGuardApp() {
     // 2. Word-by-word Translation
     const dict = target === 'jv' ? ID_TO_JV_WORDS : ID_TO_MAD_WORDS;
     const words = text.split(/\s+/);
-    let translatedCount = 0;
-
     const translated = words.map(word => {
       const cleanW = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
       const punctuation = word.slice(cleanW.length);
 
       if (dict[cleanW]) {
-        translatedCount++;
         let replacement = level === 'high' ? dict[cleanW].high : dict[cleanW].low;
         if (word[0] === word[0].toUpperCase()) {
           replacement = replacement.charAt(0).toUpperCase() + replacement.slice(1);
@@ -499,10 +520,10 @@ export default function HeritageGuardApp() {
       context: context,
       alternativeText: altTranslated !== computedText ? altTranslated : undefined
     };
-  };
+  }, []);
 
   // Text Translation Trigger
-  const handleTranslate = async (textVal: string) => {
+  const handleTranslate = useCallback(async (textVal: string) => {
     if (!textVal.trim()) {
       setTranslatedText('');
       setPolitenessAnalysis({ ngoko: 0, krama: 0, summary: 'Belum ada analisis' });
@@ -513,7 +534,7 @@ export default function HeritageGuardApp() {
 
     try {
       // API call to FastAPI backend
-      const response = await fetch('http://127.0.0.1:8000/api/translate', {
+      const response = await fetch(`${API_BASE_URL}/api/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -537,7 +558,7 @@ export default function HeritageGuardApp() {
       } else {
         throw new Error('API server returned error');
       }
-    } catch (e) {
+    } catch {
       // Offline fallback
       const offlineResult = performOfflineTranslation(textVal, sourceLang, targetLang, targetLevel);
       setTranslatedText(offlineResult.translatedText);
@@ -549,7 +570,16 @@ export default function HeritageGuardApp() {
       setCulturalContext(offlineResult.context);
       setSuggestedVersion(offlineResult.alternativeText || null);
     }
-  };
+  }, [
+    sourceLang,
+    targetLang,
+    targetLevel,
+    performOfflineTranslation,
+    setTranslatedText,
+    setPolitenessAnalysis,
+    setCulturalContext,
+    setSuggestedVersion
+  ]);
 
   // Handle change in input text
   useEffect(() => {
@@ -557,7 +587,7 @@ export default function HeritageGuardApp() {
       handleTranslate(inputText);
     }, 300);
     return () => clearTimeout(delayDebounce);
-  }, [inputText, sourceLang, targetLang, targetLevel]);
+  }, [inputText, handleTranslate]);
 
   // Swap Languages
   const handleSwapLanguages = () => {
@@ -616,66 +646,114 @@ export default function HeritageGuardApp() {
       triggerToast('Hanya mendukung file PDF, DOCX, DOC, atau TXT!', 'alert-circle');
       return;
     }
+    if (file.size > 10 * 1024 * 1024) {
+      triggerToast('Ukuran maksimal dokumen adalah 10MB.', 'alert-circle');
+      return;
+    }
     setUploadedFile(file);
     setDocProgress(-1);
     setDocTranslatedName('');
+    setDocDownloadUrl('');
+    setDocTranslatedText('');
+    setDocPreviewTruncated(false);
+    setDocWordsTranslated(0);
+    setDocPolitenessSummary('');
+    setDocError('');
     triggerToast('Dokumen berhasil diunggah', 'check');
   };
 
-  const startDocumentTranslation = () => {
+  const clearDocument = () => {
+    setUploadedFile(null);
+    setDocProgress(-1);
+    setDocProgressStep('');
+    setDocTranslatedName('');
+    setDocDownloadUrl('');
+    setDocTranslatedText('');
+    setDocPreviewTruncated(false);
+    setDocWordsTranslated(0);
+    setDocPolitenessSummary('');
+    setDocError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const startDocumentTranslation = async () => {
     if (!uploadedFile) return;
 
     setDocProgress(0);
-    setDocProgressStep('Mengekstrak file dokumen...');
+    setDocProgressStep('Mengunggah dan memvalidasi dokumen...');
+    setDocError('');
+    setDocTranslatedText('');
+    setDocDownloadUrl('');
 
-    let pct = 0;
-    const steps = [
-      { trigger: 25, label: 'Membaca paragraf & memetakan format...' },
-      { trigger: 60, label: 'Menganalisis kesopanan linguistik (AI)...' },
-      { trigger: 85, label: 'Menerjemahkan kosakata daerah...' },
-      { trigger: 100, label: 'Menyusun berkas baru...' }
-    ];
+    const formData = new FormData();
+    formData.append('file', uploadedFile);
+    formData.append('source_lang', docSourceLang);
+    formData.append('target_lang', docTargetLang);
+    formData.append('level', docTargetLevel);
 
-    const timer = setInterval(() => {
-      pct += Math.floor(Math.random() * 10) + 4;
-      if (pct >= 100) {
-        pct = 100;
-        clearInterval(timer);
-        setTimeout(() => {
-          const split = uploadedFile.name.split('.');
-          const ext = split.pop();
-          const baseName = split.join('.');
-          const suffix = docTargetLang === 'jv' ? '_terjemahan_jawa' : '_terjemahan_madura';
+    try {
+      setDocProgress(35);
+      setDocProgressStep('Mengekstrak teks dan menjalankan pipeline terjemahan...');
+      const response = await fetch(`${API_BASE_URL}/api/translate-document`, {
+        method: 'POST',
+        body: formData
+      });
 
-          setDocTranslatedName(`${baseName}${suffix}.${ext}`);
-          setDocProgress(100);
-          triggerToast('Dokumen berhasil diterjemahkan!', 'check');
-        }, 500);
+      setDocProgress(75);
+      setDocProgressStep('Menyusun hasil terjemahan...');
+
+      if (!response.ok) {
+        let message = 'Dokumen gagal diterjemahkan.';
+        try {
+          const errorBody = await response.json();
+          message = errorBody.detail || message;
+        } catch {
+          // Keep default message when the API did not send JSON.
+        }
+        throw new Error(message);
       }
 
-      setDocProgress(pct);
-      const curStep = steps.find(s => pct <= s.trigger);
-      if (curStep) setDocProgressStep(curStep.label);
-    }, 150);
+      const data = await response.json() as DocumentTranslationResult;
+      setDocTranslatedName(data.filename);
+      setDocDownloadUrl(data.downloadUrl);
+      setDocTranslatedText(data.translatedText);
+      setDocPreviewTruncated(data.previewTruncated);
+      setDocWordsTranslated(data.wordsTranslated);
+      setDocPolitenessSummary(data.politenessSummary);
+      setDocProgress(100);
+      setDocProgressStep('Penerjemahan selesai.');
+      triggerToast('Dokumen berhasil diterjemahkan!', 'check');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Dokumen gagal diterjemahkan.';
+      setDocProgress(-1);
+      setDocError(message);
+      triggerToast(message, 'alert-circle');
+    }
   };
 
-  const downloadTranslatedDocument = () => {
-    if (!docTranslatedName) return;
+  const downloadTranslatedDocument = async () => {
+    if (!docTranslatedName || !docDownloadUrl) return;
 
-    const mockContent = `HERITAGEGUARD - TERJEMAHAN DOKUMEN PRESERVASI BUDAYA
-Nama Dokumen: ${docTranslatedName}
-Status Validasi: Diterjemahkan menggunakan FastAPI & NLP Core.
-=========================================
-Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lokal.
-`;
-    const blob = new Blob([mockContent], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = docTranslatedName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    triggerToast('Unduhan berkas dimulai!', 'download');
+    setDocDownloading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}${docDownloadUrl}`);
+      if (!response.ok) throw new Error('Berkas hasil sudah kedaluwarsa atau tidak tersedia.');
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = docTranslatedName;
+      document.body.appendChild(link);
+      link.click();
+      URL.revokeObjectURL(link.href);
+      document.body.removeChild(link);
+      setDocDownloadUrl('');
+      triggerToast('Unduhan berkas dimulai!', 'download');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal mengunduh berkas.';
+      triggerToast(message, 'alert-circle');
+    } finally {
+      setDocDownloading(false);
+    }
   };
 
   return (
@@ -1116,7 +1194,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
             ) : (
               // File Preview Card
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md flex flex-col gap-5">
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
                     (uploadedFile.name.endsWith('.docx') || uploadedFile.name.endsWith('.doc')) ? 'bg-blue-600' : 
@@ -1129,21 +1207,42 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                     <p className="text-xs text-text-muted">{(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-text-medium">Terjemahkan ke:</span>
-                    <select className="bg-bg-cream border border-border-color rounded-md px-2.5 py-1.5 font-semibold text-xs text-primary outline-none" value={docTargetLang} onChange={(e) => setDocTargetLang(e.target.value)}>
-                      <option value="jv">Bahasa Jawa (Krama)</option>
-                      <option value="mad">Bahasa Madura (Engghi-Bhanten)</option>
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-3 md:items-end">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-text-medium">Bahasa sumber</span>
+                    <select className="bg-bg-cream border border-border-color rounded-md px-2.5 py-2 font-semibold text-xs text-primary outline-none" value={docSourceLang} onChange={(e) => setDocSourceLang(e.target.value)}>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="jv">Bahasa Jawa</option>
+                      <option value="mad">Bahasa Madura</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-text-medium">Bahasa target</span>
+                    <select className="bg-bg-cream border border-border-color rounded-md px-2.5 py-2 font-semibold text-xs text-primary outline-none" value={docTargetLang} onChange={(e) => setDocTargetLang(e.target.value)}>
+                      <option value="jv">Bahasa Jawa</option>
+                      <option value="mad">Bahasa Madura</option>
                       <option value="id">Bahasa Indonesia</option>
                     </select>
+                  </label>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold text-text-medium">Ragam target</span>
+                    <div className="flex bg-bg-cream border border-border-color p-0.5 rounded-md text-xs font-semibold min-h-9">
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'low' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('low')} disabled={docTargetLang === 'id'}>
+                        {docTargetLang === 'mad' ? 'Enja-Iya' : 'Ngoko'}
+                      </button>
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'high' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('high')} disabled={docTargetLang === 'id'}>
+                        {docTargetLang === 'mad' ? 'Engghi' : 'Krama'}
+                      </button>
+                    </div>
                   </div>
-                  <button className="bg-primary hover:bg-primary-light text-white font-semibold text-xs px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer smooth-transition" onClick={startDocumentTranslation} disabled={docProgress >= 0 && docProgress < 100}>
-                    Mulai <Play size={12} fill="white" />
-                  </button>
-                  <button className="border border-border-color hover:bg-red-50 hover:border-red-200 text-text-muted hover:text-red-500 p-2 rounded-lg cursor-pointer smooth-transition" onClick={() => setUploadedFile(null)} disabled={docProgress >= 0 && docProgress < 100} title="Hapus berkas">
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button className="bg-primary hover:bg-primary-light text-white font-semibold text-xs px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer smooth-transition disabled:bg-neutral-medium disabled:cursor-not-allowed" onClick={startDocumentTranslation} disabled={docProgress >= 0 && docProgress < 100}>
+                      Mulai <Play size={12} fill="white" />
+                    </button>
+                    <button className="border border-border-color hover:bg-red-50 hover:border-red-200 text-text-muted hover:text-red-500 p-2 rounded-lg cursor-pointer smooth-transition disabled:opacity-50" onClick={clearDocument} disabled={docProgress >= 0 && docProgress < 100} title="Hapus berkas">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1161,17 +1260,49 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
               </div>
             )}
 
+            {docError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm flex items-start gap-3">
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                <span>{docError}</span>
+              </div>
+            )}
+
             {/* Document Download & Summary */}
             {docProgress === 100 && docTranslatedName && (
-              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 animation-fadeIn">
-                <div>
-                  <h4 className="font-heading font-semibold text-primary mb-1">Penerjemahan Selesai!</h4>
-                  <p className="text-xs text-text-medium mb-1 font-semibold">{docTranslatedName}</p>
-                  <span className="text-[10px] text-text-muted">Unduh sekarang untuk mendapatkan hasil terjemahan NLP presisi.</span>
+              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 shadow-sm flex flex-col gap-5 animation-fadeIn">
+                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                  <div>
+                    <h4 className="font-heading font-semibold text-primary mb-1">Penerjemahan Selesai</h4>
+                    <p className="text-xs text-text-medium mb-1 font-semibold">{docTranslatedName}</p>
+                    <span className="text-[10px] text-text-muted">
+                      {docWordsTranslated} kata diproses - {docPolitenessSummary || 'Netral'}
+                    </span>
+                  </div>
+                  <button
+                    className="bg-accent-brown hover:bg-accent-brown-light text-white font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md smooth-transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={downloadTranslatedDocument}
+                    disabled={!docDownloadUrl || docDownloading}
+                  >
+                    {docDownloading ? 'Menyiapkan...' : 'Unduh Berkas'} <Download size={14} />
+                  </button>
                 </div>
-                <button className="bg-accent-brown hover:bg-accent-brown-light text-white font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer shadow-md smooth-transition" onClick={downloadTranslatedDocument}>
-                  Unduh Berkas <Download size={14} />
-                </button>
+
+                <div className="bg-white border border-border-color rounded-xl p-4">
+                  <div className="flex justify-between items-center gap-3 mb-3">
+                    <h5 className="font-heading font-semibold text-sm text-primary">Teks Terjemahan</h5>
+                    <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => copyToClipboard(docTranslatedText)} title="Salin hasil terjemahan">
+                      <Copy size={15} />
+                    </button>
+                  </div>
+                  <div className="max-h-[320px] overflow-auto whitespace-pre-wrap text-sm text-text-dark leading-relaxed">
+                    {docTranslatedText || 'Tidak ada teks yang berhasil diekstrak dari dokumen.'}
+                  </div>
+                  {docPreviewTruncated && (
+                    <p className="text-[11px] text-text-muted mt-3">
+                      Pratinjau dipotong karena dokumen panjang. Berkas unduhan berisi hasil lengkap.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

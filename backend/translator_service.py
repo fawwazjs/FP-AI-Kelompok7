@@ -4,6 +4,45 @@
 import re
 import os
 import json
+import unicodedata
+from pathlib import Path
+
+SUPPORTED_LANGUAGES = {"id", "jv", "mad"}
+SUPPORTED_LEVELS = {"low", "high"}
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+
+def _dataset_path(*parts: str) -> Path:
+    return BASE_DIR.joinpath(*parts)
+
+def _strip_accents(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+def _normalize_text_key(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text).lower().replace("’", "'")
+    text = re.sub(r"[\[\]{}()\"“”]", " ", text)
+    text = re.sub(r"[^\w\s'\-]", " ", text, flags=re.UNICODE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+def _key_variants(text: str) -> set[str]:
+    base = _normalize_text_key(text)
+    plain = _normalize_text_key(_strip_accents(text))
+    return {v for v in (base, plain) if v}
+
+def _clean_dataset_value(value) -> str:
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value or value.lower() == "none":
+        return ""
+    value = re.sub(r"\s+", " ", value)
+    return value.lower()
+
+def _word_count(text: str) -> int:
+    normalized = _normalize_text_key(text)
+    return len(normalized.split()) if normalized else 0
 
 # Phrase-level exact translation database
 PHRASES_DB = {
@@ -138,22 +177,226 @@ ID_TO_MAD = {
     'bisa': { 'high': 'saged', 'low': 'bisa' }
 }
 
+def _register_phrase(pair_key: str, source_text: str, high: str, low: str, context: str):
+    phrase_bucket = PHRASES_DB.setdefault(pair_key, {})
+    for key in _key_variants(source_text):
+        phrase_bucket.setdefault(key, {
+            "high": high,
+            "low": low,
+            "context": context
+        })
+
+def _load_javanese_dataset():
+    json_path = _dataset_path("Dataset", "ngoko_krama.json")
+    if not json_path.exists():
+        return
+
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            ngoko_krama = json.load(f)
+    except Exception:
+        return
+
+    for rec in ngoko_krama.get("employees", {}).values():
+        indo = _clean_dataset_value(rec.get("indonesia"))
+        ngoko = _clean_dataset_value(rec.get("ngoko"))
+        krama_lugu = _clean_dataset_value(rec.get("kramaalus"))
+        krama_inggil = _clean_dataset_value(rec.get("kramainggil"))
+        high = krama_inggil or krama_lugu
+        low = ngoko or high
+
+        if not indo or not high or not low:
+            continue
+
+        if _word_count(indo) <= 5:
+            _register_phrase(
+                "id_jv",
+                indo,
+                high,
+                low,
+                "Entri berasal dari dataset ngoko-krama lokal; gunakan ragam tinggi untuk konteks hormat dan ragam rendah untuk percakapan akrab."
+            )
+
+        if _word_count(indo) == 1 and _word_count(high) <= 3 and _word_count(low) <= 3:
+            for key in _key_variants(indo):
+                ID_TO_JV.setdefault(key, {"high": high, "low": low})
+
+def _clean_madura_sentence(value: str) -> str:
+    value = value.replace("\\'", "'")
+    value = re.sub(r"\{[^}]*\}", " ", value)
+    value = re.sub(r"\[[^\]]*\]", " ", value)
+    value = re.sub(r"\b(n|v|adv|pron|p|num)\.", " ", value, flags=re.IGNORECASE)
+    value = value.split(";", 1)[0].split(",", 1)[0]
+    value = re.sub(r"\([^)]*\)", " ", value)
+    value = re.sub(r"[.!?]+$", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value.lower()
+
+def _looks_like_short_phrase(value: str) -> bool:
+    if not value or _word_count(value) > 5:
+        return False
+    return bool(re.fullmatch(r"[\w\s'\-̀-ỹ]+", value, flags=re.UNICODE))
+
+def _load_madura_sentence_pairs(limit: int = 3000):
+    sql_path = _dataset_path("Dataset", "madura.sql")
+    if not sql_path.exists():
+        return
+
+    row_re = re.compile(r"\((\d+),\s*'((?:[^'\\]|\\.)*)',\s*'((?:[^'\\]|\\.)*)',\s*(\d+),\s*(\d+),\s*(NULL|'(?:[^'\\]|\\.)*')\)")
+    pending_mad: dict[tuple[str, str], str] = {}
+    loaded = 0
+
+    try:
+        with open(sql_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line.startswith("("):
+                    continue
+                if line.endswith(",") or line.endswith(";"):
+                    line = line[:-1]
+
+                match = row_re.match(line)
+                if not match:
+                    continue
+
+                lang = match.group(2)
+                sentence = match.group(3)
+                pair_key = (match.group(5), match.group(4))
+
+                if lang == "MAD":
+                    pending_mad[pair_key] = sentence
+                    continue
+
+                if lang != "IND" or pair_key not in pending_mad:
+                    continue
+
+                mad = _clean_madura_sentence(pending_mad[pair_key])
+                indo = _clean_madura_sentence(sentence)
+                if not _looks_like_short_phrase(mad) or not _looks_like_short_phrase(indo):
+                    continue
+
+                _register_phrase(
+                    "id_mad",
+                    indo,
+                    mad,
+                    mad,
+                    "Entri berasal dari pasangan kalimat kamus Madura lokal. Tingkat tutur tidak selalu tersedia, sehingga output digunakan sebagai padanan leksikal."
+                )
+
+                if _word_count(indo) == 1 and _word_count(mad) <= 3:
+                    for key in _key_variants(indo):
+                        ID_TO_MAD.setdefault(key, {"high": mad, "low": mad})
+
+                loaded += 1
+                if loaded >= limit:
+                    break
+    except Exception:
+        return
+
+_load_javanese_dataset()
+_load_madura_sentence_pairs()
+
 # Reverse lists for target -> source translations
 REV_JV = {}
 REV_MAD = {}
 for w, val in ID_TO_JV.items():
-    REV_JV[val['high'].lower()] = w
-    REV_JV[val['low'].lower()] = w
+    for key in _key_variants(val['high']):
+        REV_JV.setdefault(key, w)
+    for key in _key_variants(val['low']):
+        REV_JV.setdefault(key, w)
 for w, val in ID_TO_MAD.items():
-    REV_MAD[val['high'].lower()] = w
-    REV_MAD[val['low'].lower()] = w
+    for key in _key_variants(val['high']):
+        REV_MAD.setdefault(key, w)
+    for key in _key_variants(val['low']):
+        REV_MAD.setdefault(key, w)
 
 def get_word_count(text: str):
-    clean = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]', '', text.lower())
-    return len(clean.split())
+    return _word_count(text)
+
+def _apply_case(source_token: str, replacement: str) -> str:
+    if source_token[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+def _split_token(raw: str) -> tuple[str, str, str] | None:
+    match = re.match(r"^([^\w']*)([\w'\-̀-ỹ]+)([^\w']*)$", raw, flags=re.UNICODE)
+    if not match:
+        return None
+    return match.group(1), match.group(2), match.group(3)
+
+def _translate_word_by_word(text: str, dictionary: dict, level: str) -> tuple[str, str | None, int]:
+    translated_parts = []
+    alternative_parts = []
+    translated_count = 0
+
+    for raw in re.split(r"(\s+)", text):
+        if not raw or raw.isspace():
+            translated_parts.append(raw)
+            alternative_parts.append(raw)
+            continue
+
+        split = _split_token(raw)
+        if not split:
+            translated_parts.append(raw)
+            alternative_parts.append(raw)
+            continue
+
+        prefix, core, suffix = split
+        entry = None
+        for token_key in _key_variants(core):
+            entry = dictionary.get(token_key)
+            if entry:
+                break
+        if not entry:
+            translated_parts.append(raw)
+            alternative_parts.append(raw)
+            continue
+
+        translated_count += 1
+        alt_level = "low" if level == "high" else "high"
+        replacement = _apply_case(core, entry[level])
+        alternative = _apply_case(core, entry[alt_level])
+        translated_parts.append(f"{prefix}{replacement}{suffix}")
+        alternative_parts.append(f"{prefix}{alternative}{suffix}")
+
+    translated = "".join(translated_parts)
+    alternative = "".join(alternative_parts)
+    return translated, alternative if alternative != translated else None, translated_count
+
+def _translate_reverse_word_by_word(text: str, reverse_dictionary: dict) -> tuple[str, int]:
+    translated_parts = []
+    translated_count = 0
+
+    for raw in re.split(r"(\s+)", text):
+        if not raw or raw.isspace():
+            translated_parts.append(raw)
+            continue
+
+        split = _split_token(raw)
+        if not split:
+            translated_parts.append(raw)
+            continue
+
+        prefix, core, suffix = split
+        replacement = None
+        for token_key in _key_variants(core):
+            replacement = reverse_dictionary.get(token_key)
+            if replacement:
+                break
+        if not replacement:
+            translated_parts.append(raw)
+            continue
+
+        translated_count += 1
+        translated_parts.append(f"{prefix}{_apply_case(core, replacement)}{suffix}")
+
+    return "".join(translated_parts), translated_count
 
 def translate_and_classify(text: str, source: str, target: str, level: str) -> dict:
-    clean_text = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]', '', text.lower()).strip()
+    source = source if source in SUPPORTED_LANGUAGES else "id"
+    target = target if target in SUPPORTED_LANGUAGES else "id"
+    level = level if level in SUPPORTED_LEVELS else "high"
+    clean_text = _normalize_text_key(text)
     match_key = f"{source}_{target}"
     
     translated_text = ""
@@ -176,6 +419,17 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
             "alternativeText": None
         }
 
+    # Direct Jawa<->Madura model is not available yet; pivot through Indonesian
+    # so the public API remains stable when a trained model is added later.
+    if source != "id" and target != "id":
+        pivot = translate_and_classify(text, source, "id", level)
+        result = translate_and_classify(pivot["translatedText"], "id", target, level)
+        result["context"] = (
+            f"{result['context']} Terjemahan dialihkan melalui Bahasa Indonesia "
+            f"karena model langsung {source}->{target} belum tersedia."
+        )
+        return result
+
     # 1. Check phrase matches (Indonesian -> Regional)
     if match_key in PHRASES_DB and clean_text in PHRASES_DB[match_key]:
         entry = PHRASES_DB[match_key][clean_text]
@@ -193,7 +447,9 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
         reverse_db = PHRASES_DB[f"id_{source}"]
         found = False
         for id_key, val in reverse_db.items():
-            if val['high'].lower().replace('?','').strip() == clean_text:
+            high_matches = clean_text in _key_variants(val['high'])
+            low_matches = clean_text in _key_variants(val['low'])
+            if high_matches:
                 translated_text = id_key.capitalize()
                 alternative = val['low']
                 politeness_level = "Krama Alus" if source == 'jv' else "Engghi-Bhanten"
@@ -202,7 +458,7 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
                 krama_pct = 85.0
                 found = True
                 break
-            elif val['low'].lower().replace('?','').strip() == clean_text:
+            elif low_matches:
                 translated_text = id_key.capitalize()
                 alternative = val['high']
                 politeness_level = "Ngoko Lugu" if source == 'jv' else "Enja-Iya"
@@ -214,51 +470,21 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
         
         if not found:
             # Word-by-word reverse translation
-            words = text.split()
             rev_dict = REV_JV if source == 'jv' else REV_MAD
-            translated = []
-            for w in words:
-                clean_w = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]', '', w.lower())
-                punc = w[len(clean_w):]
-                if clean_w in rev_dict:
-                    rep = rev_dict[clean_w]
-                    if w and w[0].isupper():
-                        rep = rep.capitalize()
-                    translated.append(rep + punc)
-                else:
-                    translated.append(w)
-            translated_text = " ".join(translated)
+            translated_text, translated_count = _translate_reverse_word_by_word(text, rev_dict)
             politeness_info = run_politeness_analysis(text, source)
             politeness_level = politeness_info["level"]
             ngoko_pct = politeness_info["ngoko"]
             krama_pct = politeness_info["krama"]
-            context = "Diterjemahkan secara literal kata-demi-kata ke Bahasa Indonesia."
+            context = (
+                "Diterjemahkan secara literal kata-demi-kata ke Bahasa Indonesia. "
+                f"Kosakata cocok: {translated_count}."
+            )
 
     # 3. Word-by-word fallback (Indonesian -> Regional)
     else:
         dict_to_use = ID_TO_JV if target == 'jv' else ID_TO_MAD
-        words = text.split()
-        translated = []
-        alt_translated = []
-        for w in words:
-            clean_w = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]', '', w.lower())
-            punc = w[len(clean_w):]
-            if clean_w in dict_to_use:
-                rep = dict_to_use[clean_w][level]
-                rep_alt = dict_to_use[clean_w]['low' if level == 'high' else 'high']
-                if w and w[0].isupper():
-                    rep = rep.capitalize()
-                    rep_alt = rep_alt.capitalize()
-                translated.append(rep + punc)
-                alt_translated.append(rep_alt + punc)
-            else:
-                translated.append(w)
-                alt_translated.append(w)
-        
-        translated_text = " ".join(translated)
-        alternative_text = " ".join(alt_translated)
-        if alternative_text != translated_text:
-            alternative = alternative_text
+        translated_text, alternative, translated_count = _translate_word_by_word(text, dict_to_use, level)
         
         is_high = level == 'high'
         politeness_level = "Krama Alus" if target == 'jv' else "Engghi-Bhanten"
@@ -272,6 +498,7 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
             context = "Tingkat tutur Krama Alus digunakan untuk menghormati orang tua/guru." if is_high else "Tingkat tutur Ngoko Lugu digunakan untuk teman akrab/lebih muda."
         else:
             context = "Tingkat tutur Engghi-Bhanten mencerminkan rasa hormat yang tinggi." if is_high else "Tingkat tutur Enja-Iya digunakan untuk percakapan kasual sehari-hari."
+        context = f"{context} Kosakata cocok: {translated_count}."
 
     return {
         "translatedText": translated_text,
@@ -286,7 +513,7 @@ def run_politeness_analysis(text: str, lang: str) -> dict:
     if lang == 'id':
         return {"level": "Netral", "ngoko": 0, "krama": 0, "context": "Teks menggunakan Bahasa Indonesia netral."}
     
-    clean = re.sub(r'[.,\/#!$%\^&\*;:{}=\-_`~()?]', '', text.lower())
+    clean = _normalize_text_key(text)
     words = clean.split()
     
     high_count = 0
@@ -295,9 +522,9 @@ def run_politeness_analysis(text: str, lang: str) -> dict:
 
     for w in words:
         for val in dict_to_check.values():
-            if val['high'] == w:
+            if w in _key_variants(val['high']):
                 high_count += 1
-            elif val['low'] == w:
+            elif w in _key_variants(val['low']):
                 low_count += 1
                 
     total = high_count + low_count
@@ -347,8 +574,8 @@ mad_engghi_enten_core = {"bula", "bula'", "dhika", "dhiko", "sampeyan"}
 mad_engghi_bhunten_core = {"kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"}
 
 # Lazily populate them from Dataset files if they exist
-json_path = 'Dataset/ngoko_krama.json'
-sql_path = 'Dataset/madura.sql'
+json_path = _dataset_path('Dataset', 'ngoko_krama.json')
+sql_path = _dataset_path('Dataset', 'madura.sql')
 
 if os.path.exists(json_path):
     try:
