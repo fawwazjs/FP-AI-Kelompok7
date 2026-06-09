@@ -23,11 +23,13 @@ import {
   X,
   Play,
   Check,
-  AlertCircle
+  AlertCircle,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 // --- TYPE DEFINITIONS & LOCAL DATA ---
-type PageType = 'landing' | 'translator' | 'doc-translator' | 'insights' | 'about';
+type PageType = 'landing' | 'translator' | 'doc-translator' | 'detector' | 'insights' | 'about';
 
 interface TranslationResult {
   translatedText: string;
@@ -181,6 +183,34 @@ export default function HeritageGuardApp() {
   const [activePage, setActivePage] = useState<PageType>('landing');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; icon: string } | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // Load and apply theme on start
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+      setTheme('dark');
+      document.documentElement.classList.add('dark');
+    } else {
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    if (theme === 'light') {
+      setTheme('dark');
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+      triggerToast('Mode Gelap diaktifkan', 'moon');
+    } else {
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+      triggerToast('Mode Terang diaktifkan', 'sun');
+    }
+  };
 
   // --- TRANSLATOR STATE ---
   const [sourceLang, setSourceLang] = useState('id');
@@ -203,6 +233,11 @@ export default function HeritageGuardApp() {
   // --- WORD OF THE DAY STATE ---
   const [wotdIndex, setWotdIndex] = useState(0);
 
+  // --- DETECTOR STATE ---
+  const [detectorInput, setDetectorInput] = useState('');
+  const [detectorResult, setDetectorResult] = useState<{ language: string; register: string; explanation: string } | null>(null);
+  const [loadingDetect, setLoadingDetect] = useState(false);
+
   // Auto cycle word of the day
   useEffect(() => {
     const timer = setInterval(() => {
@@ -217,6 +252,142 @@ export default function HeritageGuardApp() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  // --- DETECTOR ACTION LOGIC ---
+  const performOfflineDetection = (text: string) => {
+    const clean = text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
+    const words = clean.split(/\s+/);
+    if (!words.length || words[0] === '') {
+      return { language: 'Indonesia', register: 'formal', explanation: 'Teks kosong.' };
+    }
+
+    const jvNgokoCore = new Set(['aku', 'kowe', 'arep', 'ora', 'sing', 'opo', 'sopo', 'piye', 'kene', 'kono', 'neng', 'karo', 'lan', 'dadi']);
+    const jvKramaCore = new Set(['kula', 'badhe', 'mboten', 'ingkang', 'punapa', 'sinten', 'kadospundi', 'mriki', 'mrika', 'dhateng', 'kaliyan', 'dados', 'panjenengan', 'sampeyan']);
+    const jvInggilVerbs = new Set(['dhahar', 'sare', 'tindak', 'rawuh', 'sowan', 'kersa', 'nampi', 'jumeneng', 'dalem', 'sugeng']);
+
+    const madEnjaIyaCore = new Set(["sengko'", "engko'", "ba'na", "ba'en", "enja'"]);
+    const madEngghiEntenCore = new Set(["bula", "bula'", "dhika", "dhiko", "sampeyan"]);
+    const madEngghiBhuntenCore = new Set(["kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"]);
+
+    let jvScore = 0;
+    let madScore = 0;
+    let idScore = 0;
+
+    words.forEach(w => {
+      if (jvNgokoCore.has(w) || jvKramaCore.has(w) || jvInggilVerbs.has(w)) jvScore++;
+      if (madEnjaIyaCore.has(w) || madEngghiEntenCore.has(w) || madEngghiBhuntenCore.has(w)) madScore++;
+      if (['saya', 'mau', 'makan', 'tidur', 'tidak', 'sudah', 'sedang', 'sangat', 'di', 'warung'].includes(w)) idScore++;
+    });
+
+    if (words.some(w => ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe"].includes(w))) jvScore += 10;
+    if (words.some(w => ["sèngko'", "sengko'", "kaula'", "bhâdhân", "bhadhan", "panjhenengngan", "dhika", "ba'na"].includes(w))) madScore += 10;
+
+    let lang = 'Indonesia';
+    if (jvScore > idScore && jvScore >= madScore) lang = 'Jawa';
+    else if (madScore > idScore && madScore >= jvScore) lang = 'Madura';
+
+    if (lang === 'Indonesia') {
+      const slangs = ['gue', 'gua', 'lu', 'nggak', 'aja', 'udah', 'lagi', 'kenapa', 'banget', 'pengen', 'bobo', 'mager', 'bodo'];
+      const matchedSlang = words.filter(w => slangs.includes(w));
+      if (matchedSlang.length > 0) {
+        return {
+          language: 'Indonesia',
+          register: 'informal',
+          explanation: `Teks dideteksi sebagai Bahasa Indonesia informal karena menggunakan kosakata gaul/slang: ${matchedSlang.join(', ')}.`
+        };
+      }
+      return {
+        language: 'Indonesia',
+        register: 'formal',
+        explanation: 'Teks menggunakan Bahasa Indonesia formal dengan kosakata baku.'
+      };
+    } else if (lang === 'Jawa') {
+      const hasNgokoCore = words.some(w => jvNgokoCore.has(w)) || words.includes('kowe') || words.includes('aku');
+      const hasKramaCore = words.some(w => jvKramaCore.has(w)) || words.includes('kula');
+      const hasInggil = words.some(w => jvInggilVerbs.has(w));
+
+      if (hasKramaCore) {
+        if (hasInggil) {
+          return {
+            language: 'Jawa',
+            register: 'krama alus',
+            explanation: 'Teks menggunakan ragam Jawa Krama Alus (formal/sangat sopan) karena menggunakan kata ganti/partikel Krama serta verba penghormatan Krama Inggil.'
+          };
+        }
+        return {
+          language: 'Jawa',
+          register: 'krama lugu',
+          explanation: 'Teks menggunakan ragam Jawa Krama Lugu (formal/menengah) karena menggunakan kosakata Krama Lugu tanpa campuran verba Krama Inggil.'
+        };
+      } else if (hasNgokoCore) {
+        if (hasInggil) {
+          return {
+            language: 'Jawa',
+            register: 'ngoko alus',
+            explanation: 'Teks menggunakan ragam Jawa Ngoko Alus karena memadukan kerangka kata Ngoko dengan kata penghormatan Krama Inggil untuk menghormati mitra tutur.'
+          };
+        }
+        return {
+          language: 'Jawa',
+          register: 'ngoko lugu',
+          explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu (kasual sehari-hari) dengan kosakata informal.'
+        };
+      }
+      return {
+        language: 'Jawa',
+        register: 'ngoko lugu',
+        explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu.'
+      };
+    } else {
+      const hasEnjaIya = words.some(w => madEnjaIyaCore.has(w));
+      const hasEngghiEnten = words.some(w => madEngghiEntenCore.has(w));
+      const hasEngghiBhunten = words.some(w => madEngghiBhuntenCore.has(w));
+
+      if (hasEngghiBhunten) {
+        return {
+          language: 'Madura',
+          register: 'Engghi-bhunten',
+          explanation: 'Teks menggunakan ragam Madura Engghi-bhunten (tingkat tutur halus/formal).'
+        };
+      } else if (hasEngghiEnten) {
+        return {
+          language: 'Madura',
+          register: 'Engghi-enten',
+          explanation: 'Teks menggunakan ragam Madura Engghi-enten (tingkat tutur menengah).'
+        };
+      }
+      return {
+        language: 'Madura',
+        register: 'Enja-Iya',
+        explanation: 'Teks menggunakan ragam Madura Enja-Iya (tingkat tutur kasual sehari-hari).'
+      };
+    }
+  };
+
+  const handleDetectRegister = async () => {
+    if (!detectorInput.trim()) return;
+    setLoadingDetect(true);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/detect-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: detectorInput })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setDetectorResult(data);
+        triggerToast('Teks berhasil dianalisis!', 'check');
+      } else {
+        throw new Error('Server returned error');
+      }
+    } catch (e) {
+      const result = performOfflineDetection(detectorInput);
+      setDetectorResult(result);
+      triggerToast('Analisis selesai (Offline Mode)', 'info');
+    } finally {
+      setLoadingDetect(false);
+    }
+  };
+
   // Switch hash route support
   useEffect(() => {
     const handleHash = () => {
@@ -224,6 +395,7 @@ export default function HeritageGuardApp() {
       if (hash === '#beranda') setActivePage('landing');
       else if (hash === '#penerjemah') setActivePage('translator');
       else if (hash === '#dokumen') setActivePage('doc-translator');
+      else if (hash === '#deteksi') setActivePage('detector');
       else if (hash === '#statistik') setActivePage('insights');
       else if (hash === '#tentang') setActivePage('about');
     };
@@ -241,6 +413,7 @@ export default function HeritageGuardApp() {
       landing: '#beranda',
       translator: '#penerjemah',
       'doc-translator': '#dokumen',
+      detector: '#deteksi',
       insights: '#statistik',
       about: '#tentang'
     };
@@ -439,8 +612,8 @@ export default function HeritageGuardApp() {
 
   const processDocumentFile = (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'pdf' && ext !== 'docx') {
-      triggerToast('Hanya mendukung file PDF atau DOCX!', 'alert-circle');
+    if (ext !== 'pdf' && ext !== 'docx' && ext !== 'doc' && ext !== 'txt') {
+      triggerToast('Hanya mendukung file PDF, DOCX, DOC, atau TXT!', 'alert-circle');
       return;
     }
     setUploadedFile(file);
@@ -533,6 +706,10 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
             Terjemah Dokumen
             {activePage === 'doc-translator' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
+          <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'detector' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('detector')}>
+            Deteksi Register
+            {activePage === 'detector' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
+          </li>
           <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'insights' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('insights')}>
             Insights & Statistik
             {activePage === 'insights' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
@@ -541,8 +718,13 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
             Tentang
             {activePage === 'about' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
+          <li className="flex items-center">
+            <button onClick={toggleTheme} className="text-text-medium hover:text-primary p-2 rounded-lg hover:bg-neutral-light cursor-pointer smooth-transition" title="Ubah Tema">
+              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+          </li>
           <li>
-            <button className="bg-primary hover:bg-primary-light text-white font-semibold text-sm px-4 py-2 rounded-lg shadow-sm smooth-transition hover:-translate-y-0.5" onClick={() => handleNavigate('translator')}>
+            <button className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
               Mulai Sekarang
             </button>
           </li>
@@ -555,13 +737,17 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
 
         {/* Mobile Menu Panel */}
         {mobileMenuOpen && (
-          <div className="absolute top-full left-0 right-0 bg-white border-b border-border-color shadow-lg p-6 flex flex-col gap-4 md:hidden animation-fadeIn">
+          <div className="absolute top-full left-0 right-0 bg-card-bg border-b border-border-color shadow-lg p-6 flex flex-col gap-4 md:hidden animation-fadeIn">
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('landing')}>Beranda</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('translator')}>Penerjemah</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('doc-translator')}>Terjemah Dokumen</div>
+            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('detector')}>Deteksi Register</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('insights')}>Insights & Statistik</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('about')}>Tentang</div>
-            <button className="bg-primary text-white font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
+            <button onClick={toggleTheme} className="flex items-center justify-center gap-2 border border-border-color py-2.5 rounded-lg text-text-medium font-semibold text-sm w-full cursor-pointer smooth-transition hover:bg-neutral-light">
+              {theme === 'light' ? <><Moon size={16} /> Mode Gelap</> : <><Sun size={16} /> Mode Terang</>}
+            </button>
+            <button className="bg-primary text-white dark:text-neutral-950 font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
               Mulai Sekarang
             </button>
           </div>
@@ -621,7 +807,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                   <FileText size={20} />
                 </div>
                 <h3 className="font-heading font-semibold text-lg text-primary mb-2">Ekstraksi Dokumen</h3>
-                <p className="text-text-medium text-sm leading-relaxed">Mendukung unggahan berkas PDF dan DOCX, memproses terjemah secara massal dengan format yang tetap rapi.</p>
+                <p className="text-text-medium text-sm leading-relaxed">Mendukung unggahan berkas PDF, DOC, DOCX, dan TXT, memproses terjemah secara massal dengan format yang tetap rapi.</p>
               </div>
 
               <div className="bg-white border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
@@ -646,7 +832,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                 <div className="relative">
                   <span className="font-heading font-extrabold text-5xl text-primary/5 absolute -top-5 left-0 leading-none">01</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Unggah Teks / Berkas</h3>
-                  <p className="text-text-medium text-sm leading-relaxed">Ketik kalimat pada editor terjemahan online atau masukkan file PDF/DOCX ke dropzone dokumen.</p>
+                  <p className="text-text-medium text-sm leading-relaxed">Ketik kalimat pada editor terjemahan online atau masukkan file PDF/DOCX/DOC/TXT ke dropzone dokumen.</p>
                 </div>
                 <div className="relative">
                   <span className="font-heading font-extrabold text-5xl text-primary/5 absolute -top-5 left-0 leading-none">02</span>
@@ -735,7 +921,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                 <div className="flex flex-col min-h-[350px] relative">
 
                   {/* Language swap button (Floating in middle for large screens) */}
-                  <button className="absolute -left-5 top-3 z-10 w-9 h-9 bg-white border border-border-color rounded-full shadow-md flex items-center justify-center text-accent-brown hover:bg-primary hover:text-white cursor-pointer smooth-transition hidden md:flex" onClick={handleSwapLanguages} title="Tukar bahasa">
+                  <button className="absolute -left-5 top-3 z-10 w-9 h-9 bg-white border border-border-color rounded-full shadow-md flex items-center justify-center text-accent-brown hover:bg-primary hover:text-white dark:hover:text-neutral-950 cursor-pointer smooth-transition hidden md:flex" onClick={handleSwapLanguages} title="Tukar bahasa">
                     <ArrowLeftRight size={14} />
                   </button>
 
@@ -750,10 +936,10 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                       {/* Politeness levels for regional output */}
                       {targetLang !== 'id' && (
                         <div className="flex bg-white border border-border-color p-0.5 rounded-md text-xs font-semibold">
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
                             {targetLang === 'jv' ? 'Ngoko' : 'Enja-Iya'}
                           </button>
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
                             {targetLang === 'jv' ? 'Krama' : 'Engghi-Bh'}
                           </button>
                         </div>
@@ -843,12 +1029,76 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
         </main>
       )}
 
+      {/* DETECTOR PAGE VIEW */}
+      {activePage === 'detector' && (
+        <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-12">
+          <div className="text-center mb-8">
+            <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Detektor AI</span>
+            <h2 className="font-heading font-bold text-3xl">Deteksi Bahasa & Tingkat Kesopanan</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            {/* Input Box */}
+            <div className="lg:col-span-2 bg-white border border-border-color rounded-2xl shadow-md p-6">
+              <h3 className="font-heading font-semibold text-lg text-primary mb-4">Masukkan Teks</h3>
+              <textarea
+                className="w-full min-h-[200px] p-4 border border-border-color rounded-xl outline-none resize-none text-base text-text-dark bg-transparent focus:border-primary smooth-transition"
+                placeholder="Masukkan kata atau kalimat di sini untuk mendeteksi bahasa dan ragam kesopanannya (Indonesia, Jawa, atau Madura)..."
+                value={detectorInput}
+                onChange={(e) => setDetectorInput(e.target.value)}
+              />
+              <div className="flex justify-between items-center mt-4">
+                <span className="text-xs text-text-medium">{detectorInput.length} karakter</span>
+                <button
+                  className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-2.5 rounded-xl shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer disabled:bg-neutral-medium disabled:cursor-not-allowed"
+                  onClick={handleDetectRegister}
+                  disabled={!detectorInput.trim() || loadingDetect}
+                >
+                  {loadingDetect ? 'Menganalisis...' : 'Analisis Teks'}
+                </button>
+              </div>
+            </div>
+
+            {/* Results Panel */}
+            <div className="flex flex-col gap-6">
+              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md">
+                <h3 className="font-heading font-bold text-lg text-primary flex items-center gap-2 pb-3.5 border-b border-neutral-light mb-5">
+                  Hasil Analisis
+                </h3>
+                {detectorResult ? (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <span className="text-xs text-text-muted font-bold block mb-1">BAHASA TERDETEKSI:</span>
+                      <span className="bg-primary/10 border border-primary/20 text-primary font-bold text-sm px-3 py-1.5 rounded-lg inline-block">
+                        {detectorResult.language}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-text-muted font-bold block mb-1">TINGKAT KESOPANAN / REGISTER:</span>
+                      <span className="bg-accent-gold/10 border border-accent-gold/20 text-accent-brown font-extrabold text-sm px-3 py-1.5 rounded-lg inline-block uppercase tracking-wide">
+                        {detectorResult.register}
+                      </span>
+                    </div>
+                    <div className="border-t border-neutral-light pt-3 mt-1">
+                      <span className="text-xs text-text-muted font-bold block mb-1">PENJELASAN LINGUISTIK:</span>
+                      <p className="text-xs text-text-medium leading-relaxed">{detectorResult.explanation}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-muted italic">Silakan masukkan teks dan klik Analisis Teks untuk melihat hasil.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
+      )}
+
       {/* DOCUMENT TRANSLATOR PAGE VIEW */}
       {activePage === 'doc-translator' && (
         <main className="flex-1 max-w-3xl mx-auto w-full px-6 py-12">
           <div className="text-center mb-8">
             <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Pemrosesan Dokumen</span>
-            <h2 className="font-heading font-bold text-3xl">Penerjemah Dokumen PDF & DOCX</h2>
+            <h2 className="font-heading font-bold text-3xl">Penerjemah Dokumen (PDF, DOCX, DOC, TXT)</h2>
           </div>
 
           <div className="flex flex-col gap-6">
@@ -856,19 +1106,22 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
             {/* Drag & Drop Upload Container */}
             {!uploadedFile ? (
               <div className="bg-white border-2 border-dashed border-accent-brown/30 hover:border-primary hover:bg-primary/2 rounded-2xl p-10 text-center cursor-pointer smooth-transition shadow-sm flex flex-col items-center" onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
-                <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.docx" onChange={handleFileSelect} />
+                <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.docx,.doc,.txt" onChange={handleFileSelect} />
                 <div className="w-16 h-16 bg-primary-transparent border border-primary/5 rounded-2xl flex items-center justify-center text-accent-brown mb-6 hover:scale-105 smooth-transition">
                   <FileUp size={30} />
                 </div>
                 <h3 className="font-heading font-semibold text-lg mb-2 text-text-dark">Tarik dan lepas dokumen Anda di sini</h3>
                 <p className="text-text-medium text-sm mb-6">Atau klik untuk menelusuri file dari folder Anda</p>
-                <span className="text-xs text-text-muted">Mendukung berkas PDF dan DOCX (Ukuran Maks: 10MB)</span>
+                <span className="text-xs text-text-muted">Mendukung berkas PDF, DOC, DOCX, dan TXT (Ukuran Maks: 10MB)</span>
               </div>
             ) : (
               // File Preview Card
               <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${uploadedFile.name.endsWith('.docx') ? 'bg-blue-600' : 'bg-red-500'}`}>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
+                    (uploadedFile.name.endsWith('.docx') || uploadedFile.name.endsWith('.doc')) ? 'bg-blue-600' : 
+                    uploadedFile.name.endsWith('.pdf') ? 'bg-red-500' : 'bg-emerald-600'
+                  }`}>
                     <FileText size={22} />
                   </div>
                   <div>
@@ -980,22 +1233,22 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
             {/* Word of the Day (Left Box) */}
-            <div className="bg-gradient-to-br from-primary to-primary-light text-white rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
+            <div className="bg-gradient-to-br from-primary to-primary-light dark:from-card-bg dark:to-neutral-light dark:border dark:border-border-color text-white dark:text-text-dark rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
               <div>
                 <span className="text-[10px] text-accent-gold tracking-widest font-extrabold uppercase block mb-1">Kata Daerah Hari Ini</span>
-                <div className="font-heading font-bold text-4xl text-white mb-2">{WOTD_WORDS[wotdIndex].word}</div>
+                <div className="font-heading font-bold text-4xl text-white dark:text-primary mb-2">{WOTD_WORDS[wotdIndex].word}</div>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-xs text-[#FFDF7B] italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
-                  <button className="bg-white/15 hover:bg-accent-gold text-white hover:text-primary rounded-full w-6 h-6 flex items-center justify-center cursor-pointer transition-colors" onClick={() => speakText(WOTD_WORDS[wotdIndex].word)} title="Putar audio">
+                  <span className="text-xs text-[#FFDF7B] dark:text-accent-gold italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
+                  <button className="bg-white/15 dark:bg-primary-transparent hover:bg-accent-gold dark:hover:bg-primary text-white dark:text-primary dark:hover:text-neutral-950 rounded-full w-6 h-6 flex items-center justify-center cursor-pointer transition-colors" onClick={() => speakText(WOTD_WORDS[wotdIndex].word)} title="Putar audio">
                     <Volume2 size={12} />
                   </button>
                 </div>
               </div>
-              <div className="border-t border-white/10 pt-4">
-                <span className="text-[10px] text-neutral-200 font-bold block uppercase mb-1">Arti (Bahasa Indonesia):</span>
-                <p className="text-sm leading-relaxed mb-3 text-white font-medium">{WOTD_WORDS[wotdIndex].mean}</p>
-                <span className="text-[10px] text-neutral-200 font-bold block uppercase mb-1">Contoh Kalimat:</span>
-                <p className="text-xs italic text-white">{WOTD_WORDS[wotdIndex].ex}</p>
+              <div className="border-t border-white/10 dark:border-border-color pt-4">
+                <span className="text-[10px] text-neutral-200 dark:text-text-muted font-bold block uppercase mb-1">Arti (Bahasa Indonesia):</span>
+                <p className="text-sm leading-relaxed mb-3 text-white dark:text-text-medium font-medium">{WOTD_WORDS[wotdIndex].mean}</p>
+                <span className="text-[10px] text-neutral-200 dark:text-text-muted font-bold block uppercase mb-1">Contoh Kalimat:</span>
+                <p className="text-xs italic text-white dark:text-text-medium">{WOTD_WORDS[wotdIndex].ex}</p>
               </div>
             </div>
 
@@ -1070,31 +1323,31 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                   <text x="470" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">2026</text>
 
                   {/* Javanese Line Path */}
-                  <path d="M 40 25 L 150 40 L 260 70 L 370 100 L 470 115" fill="none" stroke="#1F5E4A" strokeWidth="3" />
+                  <path d="M 40 25 L 150 40 L 260 70 L 370 100 L 470 115" fill="none" stroke="var(--color-primary)" strokeWidth="3" />
                   {/* Javanese Data points */}
-                  <circle cx="40" cy="25" r="4" fill="#1F5E4A" />
-                  <circle cx="150" cy="40" r="4" fill="#1F5E4A" />
-                  <circle cx="260" cy="70" r="4" fill="#1F5E4A" />
-                  <circle cx="370" cy="100" r="4" fill="#1F5E4A" />
-                  <circle cx="470" cy="115" r="4" fill="#1F5E4A" />
+                  <circle cx="40" cy="25" r="4" fill="var(--color-primary)" />
+                  <circle cx="150" cy="40" r="4" fill="var(--color-primary)" />
+                  <circle cx="260" cy="70" r="4" fill="var(--color-primary)" />
+                  <circle cx="370" cy="100" r="4" fill="var(--color-primary)" />
+                  <circle cx="470" cy="115" r="4" fill="var(--color-primary)" />
 
                   {/* Madurese Line Path */}
-                  <path d="M 40 30 L 150 50 L 260 80 L 370 115 L 470 130" fill="none" stroke="#8B6B4A" strokeWidth="3" />
+                  <path d="M 40 30 L 150 50 L 260 80 L 370 115 L 470 130" fill="none" stroke="var(--color-accent-brown)" strokeWidth="3" />
                   {/* Madurese Data points */}
-                  <circle cx="40" cy="30" r="4" fill="#8B6B4A" />
-                  <circle cx="150" cy="50" r="4" fill="#8B6B4A" />
-                  <circle cx="260" cy="80" r="4" fill="#8B6B4A" />
-                  <circle cx="370" cy="115" r="4" fill="#8B6B4A" />
-                  <circle cx="470" cy="130" r="4" fill="#8B6B4A" />
+                  <circle cx="40" cy="30" r="4" fill="var(--color-accent-brown)" />
+                  <circle cx="150" cy="50" r="4" fill="var(--color-accent-brown)" />
+                  <circle cx="260" cy="80" r="4" fill="var(--color-accent-brown)" />
+                  <circle cx="370" cy="115" r="4" fill="var(--color-accent-brown)" />
+                  <circle cx="470" cy="130" r="4" fill="var(--color-accent-brown)" />
                 </svg>
               </div>
               <div className="flex gap-6 justify-center mt-3 text-xs font-semibold">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-1.5 bg-[#1F5E4A] rounded-xs" />
+                  <div className="w-3 h-1.5 bg-primary rounded-xs" />
                   <span>Bahasa Jawa</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-1.5 bg-[#8B6B4A] rounded-xs" />
+                  <div className="w-3 h-1.5 bg-accent-brown rounded-xs" />
                   <span>Bahasa Madura</span>
                 </div>
               </div>
@@ -1111,33 +1364,33 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                   <circle cx="18" cy="18" r="15.915" fill="none" stroke="#F1F3F4" strokeWidth="4" />
 
                   {/* Jawa Ngoko (42%) */}
-                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="#1F5E4A" strokeWidth="4" strokeDasharray="42 58" strokeDashoffset="25" />
+                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-primary)" strokeWidth="4" strokeDasharray="42 58" strokeDashoffset="25" />
 
                   {/* Jawa Krama (38%) */}
-                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="#D4A64A" strokeWidth="4" strokeDasharray="38 62" strokeDashoffset="83" />
+                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-accent-gold)" strokeWidth="4" strokeDasharray="38 62" strokeDashoffset="83" />
 
                   {/* Madura Enja-Iya (12%) */}
-                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="#8B6B4A" strokeWidth="4" strokeDasharray="12 88" strokeDashoffset="45" />
+                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-accent-brown)" strokeWidth="4" strokeDasharray="12 88" strokeDashoffset="45" />
 
                   {/* Madura Engghi-Bhanten (8%) */}
-                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="#E6ECE8" strokeWidth="4" strokeDasharray="8 92" strokeDashoffset="33" />
+                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-primary-light)" strokeWidth="4" strokeDasharray="8 92" strokeDashoffset="33" />
                 </svg>
 
                 <div className="grid grid-cols-2 sm:grid-cols-1 gap-3 text-xs font-semibold">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-[#1F5E4A] rounded-xs" />
+                    <div className="w-3 h-3 bg-primary rounded-xs" />
                     <span>Jawa Ngoko (42%)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-[#D4A64A] rounded-xs" />
+                    <div className="w-3 h-3 bg-accent-gold rounded-xs" />
                     <span>Jawa Krama (38%)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-[#8B6B4A] rounded-xs" />
+                    <div className="w-3 h-3 bg-accent-brown rounded-xs" />
                     <span>Madura Enja-Iya (12%)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-[#E6ECE8] border border-border-color rounded-xs" />
+                    <div className="w-3 h-3 bg-primary-light rounded-xs" />
                     <span>Madura Engghi-B (8%)</span>
                   </div>
                 </div>
@@ -1175,7 +1428,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
                 </li>
                 <li className="flex gap-2.5 text-xs text-text-medium">
                   <CheckCircle2 size={16} className="text-primary shrink-0" />
-                  <span>Mengintegrasikan ekstraksi file dokumen berekstensi PDF/DOCX untuk kebutuhan administrasi publik daerah.</span>
+                  <span>Mengintegrasikan ekstraksi file dokumen berekstensi PDF, DOCX, DOC, dan TXT untuk kebutuhan administrasi publik daerah.</span>
                 </li>
                 <li className="flex gap-2.5 text-xs text-text-medium">
                   <CheckCircle2 size={16} className="text-primary shrink-0" />
@@ -1295,7 +1548,7 @@ Dokumen regional telah distrukturisasi penuh berdasarkan tata krama kesopanan lo
 
       {/* Floating Toast Notification */}
       {toastMsg && (
-        <div className="fixed bottom-6 right-6 bg-primary text-white px-5 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 text-xs font-semibold border border-primary/20 animation-slideUp smooth-transition">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-primary text-white px-5 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 text-xs font-semibold border border-primary/20 animation-fadeIn smooth-transition">
           <Info size={16} className="text-accent-gold" />
           <span>{toastMsg.text}</span>
         </div>

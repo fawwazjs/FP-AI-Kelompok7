@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .database import init_db, get_db, TranslationLog, VocabularyStat
-from .translator_service import translate_and_classify, get_word_count
-from .document_service import process_and_translate_pdf, process_and_translate_docx
+from .translator_service import translate_and_classify, get_word_count, detect_language_and_register
+from .document_service import process_and_translate_pdf, process_and_translate_docx, process_and_translate_doc, process_and_translate_txt
 
 app = FastAPI(title="HeritageGuard Core API", description="AI Preservasi Bahasa Jawa & Madura")
 
@@ -20,6 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class DetectionRequest(BaseModel):
+    text: str
 
 class TranslationRequest(BaseModel):
     text: str
@@ -40,6 +43,12 @@ def startup_event():
 @app.get("/")
 def read_root():
     return {"message": "HeritageGuard API is active", "version": "1.0.0"}
+
+@app.post("/api/detect-register")
+def detect_register(req: DetectionRequest):
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    return detect_language_and_register(req.text)
 
 @app.post("/api/translate")
 def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
@@ -82,8 +91,8 @@ def translate_document(
     db: Session = Depends(get_db)
 ):
     ext = file.filename.split('.')[-1].lower()
-    if ext not in ['pdf', 'docx']:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Must be PDF or DOCX.")
+    if ext not in ['pdf', 'docx', 'doc', 'txt']:
+        raise HTTPException(status_code=400, detail="Unsupported file format. Must be PDF, DOCX, DOC, or TXT.")
 
     # Save temp file
     input_file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -97,8 +106,12 @@ def translate_document(
     try:
         if ext == 'pdf':
             summary = process_and_translate_pdf(input_file_path, output_file_path, target_lang)
-        else:
+        elif ext == 'docx':
             summary = process_and_translate_docx(input_file_path, output_file_path, target_lang)
+        elif ext == 'doc':
+            summary = process_and_translate_doc(input_file_path, output_file_path, target_lang)
+        else:
+            summary = process_and_translate_txt(input_file_path, output_file_path, target_lang)
 
         # Log Translation
         log = TranslationLog(

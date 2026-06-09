@@ -1,4 +1,4 @@
-# HeritageGuard 🛡️
+# HeritageGuard
 
 **HeritageGuard** adalah platform digital berbasis kecerdasan buatan (AI) yang dirancang untuk melestarikan bahasa daerah di Indonesia, dengan fokus utama pada **Bahasa Jawa** dan **Bahasa Madura**. Platform ini membantu pengguna menerjemahkan teks dan dokumen (PDF/DOCX) secara kontekstual sekaligus mendeteksi tingkat kesopanan bahasa agar tetap menghormati norma kebudayaan lokal.
 
@@ -44,7 +44,26 @@ FP-AI-Kelompok7/
 
 ## 🚀 Panduan Setup & Instalasi Proyek (Step-by-Step)
 
-Ikuti langkah-langkah di bawah ini secara berurutan untuk menjalankan proyek ini di komputer Anda setelah melakukan clone:
+### ⚡ Cara Cepat Menjalankan Aplikasi (Quick Start)
+1. **Jalankan Backend (Terminal 1)**:
+   ```bash
+   source venv/bin/activate
+   pip install -r backend/requirements.txt
+   uvicorn backend.main:app --port 8000 --reload
+   ```
+2. **Jalankan Frontend (Terminal 2)**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+3. **Akses Aplikasi**:
+   - Frontend: [http://localhost:3000](http://localhost:3000)
+   - Backend API Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+---
+
+Ikuti langkah-langkah di bawah ini secara berurutan untuk melakukan setup proyek dari awal di komputer Anda:
 
 ### Langkah 1: Clone Repository
 Buka terminal Anda, lalu jalankan perintah:

@@ -2,6 +2,8 @@
 # Simulates MarianMT, IndoBERT, and Random Forest Classifier outputs.
 
 import re
+import os
+import json
 
 # Phrase-level exact translation database
 PHRASES_DB = {
@@ -317,4 +319,183 @@ def run_politeness_analysis(text: str, lang: str) -> dict:
         "ngoko": low_pct,
         "krama": high_pct,
         "context": context
+    }
+
+# ==========================================
+# REGISTER DETECTOR IMPLEMENTATION
+# ==========================================
+
+# Vocabulary Sets
+jv_ngoko = {"aku", "kowe", "arep", "mangan", "turu", "luwe", "iki", "yo", "ora", "sing", "opo", "sopo", "piye", "kene", "kono", "nopo", "sego"}
+jv_krama_lugu = {"sampeyan", "nedha", "tilem", "kesah", "tenri"}
+jv_krama_alus = {"kula", "badhe", "dhahar", "sare", "panjenengan", "wonten", "inggih", "mboten", "saking", "pundi", "punapa", "sinten", "kadospundi", "sekul"}
+
+indo_standard = {"saya", "mau", "makan", "tidur", "anda", "kamu", "tidak", "saja", "sudah", "sedang", "mengapa", "sangat", "pergi", "di", "warung", "dekat", "keraton"}
+indo_slang = {"gue", "gua", "lu", "nggak", "aja", "udah", "lagi", "kenapa", "banget", "pengen", "bobo", "mager", "bodo", "yuk", "bro", "selow", "dong", "capek", "pusing"}
+
+mad_enja_iya = {"sengko'", "ba'na", "ngakan", "tedhung", "entar", "roma", "molea", "ngakana", "enja'"}
+mad_engghi_enten = {"bula", "dhika", "bisaa", "abhanto"}
+mad_engghi_bhunten = {"bhiula", "panjhenengngan", "neddha", "asera", "alomampah", "engghi", "bhanten", "kaula'", "bhâdhân", "dada"}
+
+# Core indicators for speech level routing
+jv_ngoko_core = {'aku', 'kowe', 'arep', 'ora', 'sing', 'opo', 'sopo', 'piye', 'kene', 'kono', 'neng', 'karo', 'lan', 'dadi'}
+jv_krama_core = {'kula', 'badhe', 'mboten', 'ingkang', 'punapa', 'sinten', 'kadospundi', 'mriki', 'mrika', 'dhateng', 'kaliyan', 'dados', 'panjenengan', 'sampeyan'}
+jv_krama_inggil_verbs = {'dhahar', 'sare', 'tindak', 'rawuh', 'sowan', 'kersa', 'nampi', 'jumeneng', 'dalem', 'sugeng'}
+
+mad_enja_iya_core = {"sengko'", "engko'", "ba'na", "ba'en", "enja'"}
+mad_engghi_enten_core = {"bula", "bula'", "dhika", "dhiko", "sampeyan"}
+mad_engghi_bhunten_core = {"kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"}
+
+# Lazily populate them from Dataset files if they exist
+json_path = 'Dataset/ngoko_krama.json'
+sql_path = 'Dataset/madura.sql'
+
+if os.path.exists(json_path):
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            ngoko_krama = json.load(f)
+        for k, rec in ngoko_krama['employees'].items():
+            n = str(rec.get('ngoko')).lower().strip()
+            kl = str(rec.get('kramaalus')).lower().strip()
+            ka = str(rec.get('kramainggil')).lower().strip()
+            
+            has_n = n and n != 'none' and n != ''
+            has_kl = kl and kl != 'none' and kl != ''
+            has_ka = ka and ka != 'none' and ka != ''
+            
+            if has_n:
+                is_distinct = False
+                if has_kl and n != kl:
+                    is_distinct = True
+                if has_ka and n != ka:
+                    is_distinct = True
+                if is_distinct:
+                    jv_ngoko.add(n)
+            if has_kl:
+                jv_krama_lugu.add(kl)
+            if has_ka:
+                jv_krama_alus.add(ka)
+        jv_ngoko = jv_ngoko - jv_krama_alus - jv_krama_lugu
+    except Exception as e:
+        pass
+
+if os.path.exists(sql_path):
+    try:
+        row_re = re.compile(r"\((\d+),\s*'((?:[^'\\]|\\.)*)',\s*'((?:[^'\\]|\\.)*)',\s*(\d+),\s*(\d+),\s*(NULL|'(?:[^'\\]|\\.)*')\)")
+        with open(sql_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line_str = line.strip()
+                if not line_str.startswith('('):
+                    continue
+                if line_str.endswith(','): line_str = line_str[:-1]
+                elif line_str.endswith(';'): line_str = line_str[:-1]
+                m = row_re.match(line_str)
+                if m:
+                    lang = m.group(2)
+                    sent = m.group(3).lower()
+                    if lang == 'MAD':
+                        clean_sent = re.sub(r'\{[a-z0-9,\s\.\?\-]+\}', '', sent)
+                        clean_sent = re.sub(r'\[.*?\]', '', clean_sent)
+                        words = [re.sub(r"[^\w']", "", w) for w in clean_sent.split() if w]
+                        for w in words:
+                            if not w: continue
+                            if '{l}' in sent: mad_enja_iya.add(w)
+                            elif '{t}' in sent: mad_engghi_enten.add(w)
+                            elif '{a}' in sent or '{at}' in sent: mad_engghi_bhunten.add(w)
+        mad_enja_iya = mad_enja_iya - mad_engghi_bhunten - mad_engghi_enten
+    except Exception as e:
+        pass
+
+def detect_language_and_register(text: str) -> dict:
+    clean_text = re.sub(r"[^\w\s']", ' ', text.lower())
+    clean_text = re.sub(r"\s+", ' ', clean_text).strip()
+    words = clean_text.split()
+    
+    if not words:
+        return {
+            "language": "Indonesia",
+            "register": "formal",
+            "explanation": "Teks kosong."
+        }
+        
+    indo_score = sum(1 for w in words if w in indo_standard or w in indo_slang)
+    jawa_score = sum(1 for w in words if w in jv_ngoko or w in jv_krama_lugu or w in jv_krama_alus)
+    mad_score = sum(1 for w in words if w in mad_enja_iya or w in mad_engghi_enten or w in mad_engghi_bhunten)
+    
+    if any(w in words for w in ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe", "inggih", "mboten"]):
+        jawa_score += 10
+    if any(w in words for w in ["sèngko'", "sengko'", "kaula'", "bhâdhân", "bhadhan", "panjhenengngan", "dhika", "ba'na", "terro"]):
+        mad_score += 10
+        
+    scores = {"Indonesia": indo_score, "Jawa": jawa_score, "Madura": mad_score}
+    detected_lang = max(scores, key=scores.get)
+    
+    if scores[detected_lang] == 0:
+        detected_lang = "Indonesia"
+        
+    register = ""
+    explanation = ""
+    
+    if detected_lang == "Indonesia":
+        slang_words = [w for w in words if w in indo_slang]
+        if slang_words:
+            register = "informal"
+            explanation = f"Teks dideteksi sebagai Bahasa Indonesia informal karena menggunakan kosakata informal/slang seperti: {', '.join(slang_words)}."
+        else:
+            register = "formal"
+            explanation = "Teks dideteksi sebagai Bahasa Indonesia formal karena menggunakan kosakata baku."
+            
+    elif detected_lang == "Jawa":
+        has_ngoko_core = any(w in words for w in jv_ngoko_core)
+        has_krama_core = any(w in words for w in jv_krama_core)
+        has_inggil = any(w in words for w in jv_krama_inggil_verbs)
+        krama_lugu_words = [w for w in words if w in jv_krama_lugu]
+        
+        if has_krama_core or "kula" in words:
+            if has_inggil:
+                register = "krama alus"
+                explanation = "Teks dideteksi sebagai Jawa Krama Alus (formal/sangat sopan) karena menggunakan kata ganti/partikel Krama serta verba penghormatan Krama Inggil."
+            else:
+                register = "krama lugu"
+                explanation = "Teks dideteksi sebagai Jawa Krama Lugu (formal/menengah) karena menggunakan kosakata Krama Lugu tanpa campuran verba Krama Inggil."
+        elif has_ngoko_core or "kowe" in words or "aku" in words:
+            if has_inggil:
+                register = "ngoko alus"
+                explanation = "Teks dideteksi sebagai Jawa Ngoko Alus karena memadukan kerangka kata Ngoko dengan kata penghormatan Krama Inggil untuk menghormati mitra tutur."
+            else:
+                register = "ngoko lugu"
+                explanation = "Teks dideteksi sebagai Jawa Ngoko Lugu (kasual sehari-hari) dengan kosakata informal."
+        else:
+            if has_inggil:
+                register = "krama alus"
+                explanation = "Teks dideteksi sebagai Jawa Krama Alus karena memuat verba penghormatan tinggi."
+            elif krama_lugu_words:
+                register = "krama lugu"
+                explanation = "Teks dideteksi sebagai Jawa Krama Lugu berdasarkan kosa kata tingkat menengah."
+            else:
+                register = "ngoko lugu"
+                explanation = "Teks dideteksi sebagai Jawa Ngoko Lugu."
+                
+    elif detected_lang == "Madura":
+        has_enja_iya = any(w in words for w in mad_enja_iya_core)
+        has_engghi_enten = any(w in words for w in mad_engghi_enten_core)
+        has_engghi_bhunten = any(w in words for w in mad_engghi_bhunten_core)
+        
+        engghi_bhunten_words = [w for w in words if w in mad_engghi_bhunten]
+        engghi_enten_words = [w for w in words if w in mad_engghi_enten]
+        
+        if has_engghi_bhunten or engghi_bhunten_words:
+            register = "Engghi-bhunten"
+            explanation = "Teks dideteksi sebagai Madura Engghi-bhunten (tingkat tutur halus/formal)."
+        elif has_engghi_enten or engghi_enten_words:
+            register = "Engghi-enten"
+            explanation = "Teks dideteksi sebagai Madura Engghi-enten (tingkat tutur menengah)."
+        else:
+            register = "Enja-Iya"
+            explanation = "Teks dideteksi sebagai Madura Enja-Iya (tingkat tutur kasual sehari-hari)."
+            
+    return {
+        "language": detected_lang,
+        "register": register,
+        "explanation": explanation
     }
