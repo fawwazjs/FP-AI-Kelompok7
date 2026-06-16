@@ -31,6 +31,11 @@ temp_outputs/
 backend/temp_uploads/
 backend/temp_outputs/
 
+# Trained ML model artifacts (large; regenerate via training notebook)
+models/
+*.joblib
+heritageguard_models.zip
+
 # Environment files
 .env
 .env.local

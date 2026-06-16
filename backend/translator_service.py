@@ -392,6 +392,67 @@ def _translate_reverse_word_by_word(text: str, reverse_dictionary: dict) -> tupl
 
     return "".join(translated_parts), translated_count
 
+def _politeness_labels(target: str, level: str) -> str:
+    """Human-readable politeness level label, matching legacy output strings."""
+    if target == "jv":
+        return "Krama Alus" if level == "high" else "Ngoko Lugu"
+    if target == "mad":
+        return "Engghi-Bhanten" if level == "high" else "Enja-Iya"
+    return "Netral"
+
+def _ml_translate_and_classify(text: str, source: str, target: str, level: str):
+    """Try the trained ML pipeline. Returns a result dict or None to fall back.
+
+    Keeps the exact response contract used by the rule-based engine so the API
+    and frontend need no changes.
+    """
+    try:
+        from .ml import inference as ml_inference
+    except Exception:
+        return None
+
+    if not ml_inference.nmt_available():
+        return None
+
+    translated = ml_inference.translate(text, source, target, level)
+    if not translated or not translated.strip():
+        return None
+
+    # Alternative register: translate again with the opposite level.
+    alt_level = "low" if level == "high" else "high"
+    alternative = ml_inference.translate(text, source, target, alt_level)
+    if alternative and alternative.strip() == translated.strip():
+        alternative = None
+
+    # Politeness split: prefer the classifier, else derive from the level.
+    politeness = ml_inference.classify_politeness(translated, target)
+    if politeness:
+        ngoko_pct = politeness["ngoko"]
+        krama_pct = politeness["krama"]
+    else:
+        is_high = level == "high"
+        krama_pct = 85.0 if is_high else 15.0
+        ngoko_pct = 100.0 - krama_pct
+
+    if target == "id":
+        politeness_level = "Netral"
+        context = "Terjemahan dihasilkan oleh model NMT terlatih (Neural Machine Translation)."
+    else:
+        politeness_level = _politeness_labels(target, level)
+        context = (
+            f"Terjemahan dihasilkan oleh model NMT terlatih dengan ragam "
+            f"{'sopan' if level == 'high' else 'kasual'} ({politeness_level})."
+        )
+
+    return {
+        "translatedText": translated,
+        "politenessLevel": politeness_level,
+        "ngokoPercentage": ngoko_pct,
+        "kramaPercentage": krama_pct,
+        "context": context,
+        "alternativeText": alternative,
+    }
+
 def translate_and_classify(text: str, source: str, target: str, level: str) -> dict:
     source = source if source in SUPPORTED_LANGUAGES else "id"
     target = target if target in SUPPORTED_LANGUAGES else "id"
@@ -429,6 +490,11 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
             f"karena model langsung {source}->{target} belum tersedia."
         )
         return result
+
+    # 0. ML model first (fine-tuned NMT). Falls through to rule-based on miss.
+    ml_result = _ml_translate_and_classify(text, source, target, level)
+    if ml_result is not None:
+        return ml_result
 
     # 1. Check phrase matches (Indonesian -> Regional)
     if match_key in PHRASES_DB and clean_text in PHRASES_DB[match_key]:
@@ -633,7 +699,42 @@ if os.path.exists(sql_path):
     except Exception as e:
         pass
 
+def _ml_detect_language_and_register(text: str):
+    """Try the trained classifier for language + register. Returns dict or None."""
+    try:
+        from .ml import inference as ml_inference
+    except Exception:
+        return None
+
+    prediction = ml_inference.classify_language(text)
+    if not prediction or not prediction.get("language"):
+        return None
+
+    language = prediction["language"]
+    register = prediction.get("register") or ""
+    lang_conf = prediction.get("language_confidence")
+    reg_conf = prediction.get("register_confidence")
+
+    explanation = f"Model klasifikasi terlatih mendeteksi bahasa {language}"
+    if lang_conf is not None:
+        explanation += f" (keyakinan {lang_conf}%)"
+    if register:
+        explanation += f" dengan tingkat tutur '{register}'"
+        if reg_conf is not None:
+            explanation += f" (keyakinan {reg_conf}%)"
+    explanation += "."
+
+    return {
+        "language": language,
+        "register": register,
+        "explanation": explanation,
+    }
+
 def detect_language_and_register(text: str) -> dict:
+    ml_result = _ml_detect_language_and_register(text)
+    if ml_result is not None:
+        return ml_result
+
     clean_text = re.sub(r"[^\w\s']", ' ', text.lower())
     clean_text = re.sub(r"\s+", ' ', clean_text).strip()
     words = clean_text.split()

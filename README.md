@@ -27,6 +27,7 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 * **Backend**: FastAPI (Python 3.12+, Uvicorn Server)
 * **Database**: SQLite (via SQLAlchemy ORM)
 * **Pemrosesan Dokumen**: PyMuPDF (untuk PDF) & python-docx (untuk DOCX)
+* **Machine Learning**: HuggingFace Transformers (NLLB-200 fine-tuned untuk NMT) & scikit-learn (TF-IDF + Logistic Regression untuk deteksi bahasa/register). Backend otomatis fallback ke mesin rule-based bila artefak model tidak tersedia.
 
 ---
 
@@ -34,11 +35,47 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 ```text
 FP-AI-Kelompok7/
 ├── backend/            # Source code server FastAPI (Python)
+│   └── ml/             # Layer ML: config, data prep, inferensi (NMT + classifier)
 ├── frontend/           # Source code website Next.js (TypeScript & React)
+├── training/           # Notebook Google Colab untuk melatih model
+├── models/             # Artefak model hasil training (di-gitignore; dibuat dari notebook)
 ├── assets/             # Aset gambar & batik visual pendukung
 ├── .gitignore          # File konfigurasi abaikan git (venv, node_modules, db disembunyikan)
 └── README.md           # Dokumentasi utama proyek
 ```
+
+---
+
+## 🧠 Model Machine Learning
+
+HeritageGuard kini memakai model ML sungguhan untuk terjemahan dan deteksi register, dengan **fallback rule-based** otomatis agar aplikasi tetap berjalan walau model belum dilatih.
+
+### Apakah harus melatih model dulu?
+- **Tanpa training**: backend langsung jalan memakai mesin rule-based (kamus + frasa). Tidak ada langkah tambahan.
+- **Dengan model ML**: latih model lewat notebook Colab, taruh artefaknya di `models/`, lalu backend otomatis memakainya.
+
+### Langkah melatih (Google Colab, GPU gratis)
+1. Buka `training/HeritageGuard_Train_Colab.ipynb` di [Google Colab](https://colab.research.google.com/).
+2. Set **Runtime ▸ Change runtime type ▸ GPU**.
+3. Edit `REPO_URL` di sel clone agar menunjuk ke repo kamu, lalu jalankan semua sel berurutan.
+4. Notebook akan: menyiapkan korpus dari `Dataset/`, melatih classifier scikit-learn, fine-tune NLLB-200, lalu menghasilkan `heritageguard_models.zip`.
+5. Unduh zip itu, ekstrak ke folder `models/` di root repo sehingga strukturnya:
+   ```text
+   models/
+     nmt/                 # model + tokenizer hasil fine-tune
+     register_clf.joblib  # bundle classifier (bahasa, register, gaya)
+   ```
+
+### Mengaktifkan model di backend
+1. Pasang dependensi ML (uncomment baris torch/transformers di `backend/requirements.txt`):
+   ```bash
+   pip install -r backend/requirements.txt
+   pip install torch transformers sentencepiece
+   ```
+2. Jalankan backend seperti biasa. Cek `GET /api/health` — field `engine` akan bernilai `ml` jika model aktif, atau `rule-based` jika fallback.
+3. (Opsional) Ubah lokasi artefak lewat env `HG_MODEL_DIR`.
+
+> **Catatan akademik**: dataset proyek relatif kecil (kamus + dump kalimat), sehingga kualitas terjemahan neural terbatas. Arsitektur ML sudah sungguhan dan dapat ditingkatkan dengan menambah data paralel.
 
 ---
 

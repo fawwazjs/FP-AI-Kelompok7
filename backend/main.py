@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -98,6 +99,23 @@ MEDIA_TYPES = {
 def startup_event():
     init_db()
     _cleanup_old_files()
+    _warm_up_models()
+
+def _warm_up_models():
+    """Preload ML artifacts in a background thread so /api/health stays responsive.
+
+    If artifacts or ML libraries are missing, the loaders mark the model as
+    unavailable and the app silently uses the rule-based fallback.
+    """
+    def _load():
+        try:
+            from .ml import inference as ml_inference
+            ml_inference.nmt_available()
+            ml_inference.classifier_available()
+        except Exception:
+            pass
+
+    threading.Thread(target=_load, daemon=True).start()
 
 @app.get("/")
 def read_root():
@@ -105,7 +123,12 @@ def read_root():
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": "1.1.0"}
+    try:
+        from .ml import inference as ml_inference
+        engine = "ml" if (ml_inference.nmt_available() or ml_inference.classifier_available()) else "rule-based"
+    except Exception:
+        engine = "rule-based"
+    return {"status": "ok", "version": "1.2.0", "engine": engine}
 
 def _redacted_marker(text: str) -> str:
     digest = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:12]
