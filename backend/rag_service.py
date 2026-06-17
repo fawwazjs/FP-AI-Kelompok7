@@ -165,7 +165,7 @@ def _parse_jawa_indo2() -> list:
 
 
 def _parse_jawa_indo() -> list:
-    """Parse JawaIndo.csv (Indonesia,Javanese,Alphabet)."""
+    """Parse JawaIndo.csv (Indonesia,Javanese,Alphabet) — limited to short entries."""
     path = DATASET_DIR / "JawaIndo.csv"
     if not path.exists():
         return []
@@ -177,6 +177,9 @@ def _parse_jawa_indo() -> list:
             jawa = (rec.get("Javanese") or "").strip()
             if not indo or not jawa:
                 continue
+            # Skip overly long dictionary glosses — keep only short, usable entries
+            if len(jawa) > 80 or len(indo) > 40:
+                continue
             text = f"Indonesia: {indo} | Jawa: {jawa}"
             chunks.append({
                 "id": f"jv_indo_{i}",
@@ -186,7 +189,7 @@ def _parse_jawa_indo() -> list:
     return chunks
 
 
-def _parse_madura_sql(limit: int = 5000) -> list:
+def _parse_madura_sql(limit: int = 3000) -> list:
     """Parse madura.sql sentence pairs."""
     path = DATASET_DIR / "madura.sql"
     if not path.exists():
