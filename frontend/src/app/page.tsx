@@ -259,7 +259,14 @@ export default function HeritageGuardApp() {
 
   // --- DETECTOR STATE ---
   const [detectorInput, setDetectorInput] = useState('');
-  const [detectorResult, setDetectorResult] = useState<{ language: string; register: string; explanation: string } | null>(null);
+  const [detectorResult, setDetectorResult] = useState<{
+    language: string;
+    register: string;
+    explanation: string;
+    ngokoPercentage?: number;
+    kramaPercentage?: number;
+    wordAnalysis?: { word: string; language: string; level: string }[];
+  } | null>(null);
   const [loadingDetect, setLoadingDetect] = useState(false);
 
   // --- CHATBOT STATE ---
@@ -1204,6 +1211,61 @@ export default function HeritageGuardApp() {
                         {detectorResult.register}
                       </span>
                     </div>
+
+                    {/* Persentase Kesopanan */}
+                    {(detectorResult.ngokoPercentage !== undefined && detectorResult.kramaPercentage !== undefined) && (
+                      <div className="border-t border-neutral-light pt-3">
+                        <span className="text-xs text-text-muted font-bold block mb-2">PERSENTASE KESOPANAN:</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-orange-600 font-semibold">Kasual (Ngoko)</span>
+                              <span className="font-bold">{detectorResult.ngokoPercentage}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                              <div className="bg-orange-500 h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.ngokoPercentage}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-blue-600 font-semibold">Sopan (Krama)</span>
+                              <span className="font-bold">{detectorResult.kramaPercentage}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                              <div className="bg-blue-500 h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.kramaPercentage}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Analisis Per-Kata */}
+                    {detectorResult.wordAnalysis && detectorResult.wordAnalysis.length > 0 && (
+                      <div className="border-t border-neutral-light pt-3">
+                        <span className="text-xs text-text-muted font-bold block mb-2">ANALISIS PER-KATA:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {detectorResult.wordAnalysis.map((wa, idx) => {
+                            const langColor = wa.language === 'Jawa' ? 'bg-green-100 border-green-300 text-green-800 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300'
+                              : wa.language === 'Madura' ? 'bg-purple-100 border-purple-300 text-purple-800 dark:bg-purple-900/30 dark:border-purple-700 dark:text-purple-300'
+                              : wa.language === 'Indonesia' ? 'bg-blue-100 border-blue-300 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300'
+                              : 'bg-gray-100 border-gray-300 text-gray-800 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300';
+                            return (
+                              <span key={idx} className={`inline-flex flex-col items-center px-2 py-1 rounded-lg border text-xs ${langColor}`}>
+                                <span className="font-bold">{wa.word}</span>
+                                <span className="text-[10px] opacity-75">{wa.language} • {wa.level}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-3 mt-2 text-[10px] text-text-muted">
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-green-300 dark:bg-green-700 rounded-sm" /> Jawa</span>
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-purple-300 dark:bg-purple-700 rounded-sm" /> Madura</span>
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-300 dark:bg-blue-700 rounded-sm" /> Indonesia</span>
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-300 dark:bg-gray-600 rounded-sm" /> Asing</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="border-t border-neutral-light pt-3 mt-1">
                       <span className="text-xs text-text-muted font-bold block mb-1">PENJELASAN LINGUISTIK:</span>
                       <p className="text-xs text-text-medium leading-relaxed">{detectorResult.explanation}</p>
