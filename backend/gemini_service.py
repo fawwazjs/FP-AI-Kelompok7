@@ -274,7 +274,7 @@ def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | N
                 GEMINI_URL,
                 params={"key": api_key},
                 json=payload,
-                timeout=30.0,
+                timeout=60.0,
             )
             if response.status_code == 429:
                 logger.info("Gemini chat key rate-limited, rotating.")
