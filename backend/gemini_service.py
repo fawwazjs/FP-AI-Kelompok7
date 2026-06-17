@@ -54,7 +54,7 @@ def _is_configured() -> bool:
     return first and "placeholder" not in first.lower() and "YOUR_" not in first
 
 
-def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
+def _call_gemini(prompt: str, temperature: float = 0.3, max_tokens: int = 1024) -> str | None:
     """Call the Gemini API with key rotation. Returns the text response or None on failure."""
     if not _is_configured():
         logger.warning("Gemini API key not configured.")
@@ -68,7 +68,7 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": temperature,
-                "maxOutputTokens": 1024,
+                "maxOutputTokens": max_tokens,
             },
         }
 
@@ -150,7 +150,7 @@ Untuk explanation, jelaskan singkat dalam Bahasa Indonesia (1-2 kalimat).
 ngokoPercentage + kramaPercentage harus = 100.
 Untuk level per kata: gunakan "netral" untuk Indonesia/Asing, "ngoko"/"krama"/"krama inggil" untuk Jawa, "enja-iya"/"engghi-bhunten" untuk Madura."""
 
-    result = _call_gemini(prompt, temperature=0.1)
+    result = _call_gemini(prompt, temperature=0.1, max_tokens=4096)
     if not result:
         logger.warning("detect_with_gemini: _call_gemini returned None")
         return None
