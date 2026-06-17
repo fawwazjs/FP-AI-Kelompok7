@@ -31,6 +31,9 @@ temp_outputs/
 backend/temp_uploads/
 backend/temp_outputs/
 
+# RAG vector database (built from dataset at runtime)
+chroma_db/
+
 # Environment files
 .env
 .env.local

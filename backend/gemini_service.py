@@ -13,7 +13,7 @@ GEMINI_API_KEYS: list[str] = [
     ).split(",")
     if k.strip()
 ]
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # Round-robin counter for key rotation.
@@ -102,21 +102,34 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
 def translate_with_gemini(text: str, source_lang: str, target_lang: str, level: str) -> str | None:
     """Use Gemini to translate text when the rule-based engine can't handle it.
 
+    Uses RAG to ground the translation in our local dictionary data.
     Returns translated text or None if Gemini is unavailable/failed.
     """
     src_name = LANG_NAMES.get(source_lang, source_lang)
     tgt_name = LANG_NAMES.get(target_lang, target_lang)
     level_desc = LEVEL_DESCRIPTIONS.get(level, {}).get(target_lang, "")
 
+    # RAG: retrieve relevant dictionary entries to ground the translation
+    rag_context = ""
+    try:
+        from .rag_service import get_rag_context
+        rag_context = get_rag_context(text, target_lang=target_lang, top_k=10)
+    except Exception:
+        pass
+
     prompt = f"""Kamu adalah penerjemah bahasa daerah Indonesia yang ahli dalam Bahasa Jawa dan Bahasa Madura.
 
 Terjemahkan teks berikut dari {src_name} ke {tgt_name}.
 {"Gunakan tingkat tutur: " + level_desc + "." if level_desc else ""}
 
+{"Berikut referensi kosakata dari kamus lokal yang relevan:" if rag_context else ""}
+{rag_context}
+
 Aturan:
 - Berikan HANYA hasil terjemahan, tanpa penjelasan atau komentar tambahan.
 - Jangan menambahkan tanda kutip di awal/akhir.
 - Pertahankan tanda baca dan kapitalisasi yang wajar.
+- Gunakan referensi kamus di atas sebagai acuan utama untuk kosakata.
 - Jika ada kata yang tidak bisa diterjemahkan, biarkan dalam bahasa aslinya.
 
 Teks yang akan diterjemahkan:
@@ -146,20 +159,32 @@ Panduan:
 
 
 def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | None:
-    """Chat with Gemini. History is a list of {role, text} dicts.
+    """Chat with Gemini using RAG context. History is a list of {role, text} dicts.
 
     Returns the assistant response or None if unavailable.
     """
     if not _is_configured():
         return None
 
+    # RAG: retrieve relevant context based on user message
+    rag_context = ""
+    try:
+        from .rag_service import get_rag_context
+        rag_context = get_rag_context(message, top_k=8)
+    except Exception:
+        pass
+
     # Build the conversation contents for Gemini API.
     contents = []
 
-    # System instruction as the first user turn (Gemini doesn't have a system role in contents).
+    # System instruction with RAG context
+    system_with_rag = CHATBOT_SYSTEM_PROMPT
+    if rag_context:
+        system_with_rag += f"\n\nBerikut referensi kosakata/kalimat dari database bahasa daerah yang relevan dengan pertanyaan pengguna:\n{rag_context}\n\nGunakan referensi di atas untuk menjawab dengan akurat."
+
     contents.append({
         "role": "user",
-        "parts": [{"text": CHATBOT_SYSTEM_PROMPT}]
+        "parts": [{"text": system_with_rag}]
     })
     contents.append({
         "role": "model",

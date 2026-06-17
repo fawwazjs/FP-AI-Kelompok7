@@ -6,3 +6,7 @@ python-multipart>=0.0.6
 pymupdf>=1.22.0
 python-docx>=0.8.11
 httpx>=0.24.0
+
+# RAG pipeline (embedding + vector DB)
+sentence-transformers>=2.2.0
+chromadb>=0.4.0

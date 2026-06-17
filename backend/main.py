@@ -31,6 +31,7 @@ from .document_service import (
     process_and_translate_txt,
 )
 from .gemini_service import translate_with_gemini, chat_with_gemini
+from .rag_service import get_stats as rag_get_stats, is_available as rag_is_available
 
 app = FastAPI(title="HeritageGuard Core API", description="AI Preservasi Bahasa Jawa & Madura")
 
@@ -114,7 +115,11 @@ def read_root():
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": "2.0.0"}
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "rag": "ready" if rag_is_available() else "unavailable",
+    }
 
 def _redacted_marker(text: str) -> str:
     digest = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:12]
