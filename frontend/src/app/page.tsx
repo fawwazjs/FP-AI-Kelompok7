@@ -1085,14 +1085,7 @@ export default function HeritageGuardApp() {
                       <div className="text-text-muted text-base italic">Hasil terjemahan akan muncul di sini...</div>
                     )}
                   </div>
-                  <div className="bg-neutral-light/35 border-t border-border-color px-5 py-3 flex justify-between items-center">
-                    {translatedText ? (
-                      <span className="text-xs bg-accent-gold-glow text-accent-brown px-2.5 py-1 rounded-md font-bold uppercase tracking-wider">
-                        {politenessAnalysis.summary}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-text-muted">Analisis: -</span>
-                    )}
+                  <div className="bg-neutral-light/35 border-t border-border-color px-5 py-3 flex justify-end items-center">
                     <div className="flex gap-2">
                       <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => speakText(translatedText)} title="Dengarkan terjemahan">
                         <Volume2 size={16} />
@@ -1109,40 +1102,6 @@ export default function HeritageGuardApp() {
 
             {/* Sidebar Diagnostics */}
             <div className="flex flex-col gap-6">
-
-              {/* Politeness Analytics */}
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md">
-                <h3 className="font-heading font-bold text-lg text-primary flex items-center gap-2 pb-3.5 border-b border-neutral-light mb-5">
-                  <TrendingUp size={18} className="text-accent-gold" />
-                  Analisis Kesopanan
-                </h3>
-                <div className="flex flex-col gap-4 mb-4">
-                  {/* Progress Bar 1 */}
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span>{targetLang === 'jv' ? 'Ngoko (Kasual)' : 'Enja-Iya (Informal)'}</span>
-                      <span>{politenessAnalysis.ngoko}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-neutral-light rounded-full overflow-hidden">
-                      <div className="h-full bg-linear-to-r from-primary to-accent-gold smooth-transition" style={{ width: `${politenessAnalysis.ngoko}%` }} />
-                    </div>
-                  </div>
-
-                  {/* Progress Bar 2 */}
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span>{targetLang === 'jv' ? 'Krama (Sopan)' : 'Engghi-Bhanten (Formal)'}</span>
-                      <span>{politenessAnalysis.krama}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-neutral-light rounded-full overflow-hidden">
-                      <div className="h-full bg-linear-to-r from-primary to-accent-gold smooth-transition" style={{ width: `${politenessAnalysis.krama}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <p className="text-[11px] text-text-muted leading-relaxed">
-                  *Detektor menganalisis tingkat leksikal kesopanan kata yang diinputkan berdasarkan basis data korpus linguistik aksara Jawa dan Madura.
-                </p>
-              </div>
 
               {/* Cultural Context */}
               <div className="bg-white border-l-4 border-accent-brown border border-border-color rounded-r-2xl rounded-l-md p-6 shadow-md">
