@@ -1243,19 +1243,25 @@ export default function HeritageGuardApp() {
                     {detectorResult.wordAnalysis && detectorResult.wordAnalysis.length > 0 && (
                       <div className="border-t border-neutral-light dark:border-gray-700 pt-3">
                         <span className="text-xs text-text-muted font-bold block mb-3">ANALISIS PER-KATA:</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {detectorResult.wordAnalysis.map((wa, idx) => {
-                            const langColor = wa.language === 'Jawa' ? 'bg-green-100 border-green-300 text-green-900 dark:bg-green-900/40 dark:border-green-600 dark:text-green-200'
-                              : wa.language === 'Madura' ? 'bg-purple-100 border-purple-300 text-purple-900 dark:bg-purple-900/40 dark:border-purple-600 dark:text-purple-200'
-                              : wa.language === 'Indonesia' ? 'bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-900/40 dark:border-blue-600 dark:text-blue-200'
-                              : 'bg-gray-100 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-500 dark:text-gray-200';
-                            return (
-                              <span key={idx} className={`inline-flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-xs ${langColor}`}>
-                                <span className="font-bold text-sm">{wa.word}</span>
-                                <span className="text-[10px] font-medium opacity-80">{wa.language} • {wa.level}</span>
-                              </span>
-                            );
-                          })}
+                        <div className="bg-white dark:bg-gray-900 border border-border-color dark:border-gray-700 rounded-xl p-4">
+                          <div className="flex flex-wrap gap-2">
+                            {detectorResult.wordAnalysis.map((wa, idx) => {
+                              const langColor = wa.language === 'Jawa' ? 'bg-green-100 border-green-300 dark:bg-green-900/40 dark:border-green-600'
+                                : wa.language === 'Madura' ? 'bg-purple-100 border-purple-300 dark:bg-purple-900/40 dark:border-purple-600'
+                                : wa.language === 'Indonesia' ? 'bg-blue-100 border-blue-300 dark:bg-blue-900/40 dark:border-blue-600'
+                                : 'bg-gray-100 border-gray-300 dark:bg-gray-700 dark:border-gray-500';
+                              const textColor = wa.language === 'Jawa' ? 'text-green-900 dark:text-green-200'
+                                : wa.language === 'Madura' ? 'text-purple-900 dark:text-purple-200'
+                                : wa.language === 'Indonesia' ? 'text-blue-900 dark:text-blue-200'
+                                : 'text-gray-900 dark:text-gray-200';
+                              return (
+                                <span key={idx} className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${langColor}`}>
+                                  <span className={`font-bold text-sm ${textColor}`}>{wa.word}</span>
+                                  <span className={`text-[10px] font-medium mt-0.5 opacity-75 ${textColor}`}>{wa.language} • {wa.level}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
                         <div className="flex gap-4 mt-3 text-[11px] text-text-muted">
                           <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-full" /> Jawa</span>
