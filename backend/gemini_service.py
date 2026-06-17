@@ -61,7 +61,7 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
         return None
 
     # Try up to len(keys) times, rotating on rate-limit (429) errors.
-    attempts = min(len(GEMINI_API_KEYS), 5)
+    attempts = len(GEMINI_API_KEYS)
     for _ in range(attempts):
         api_key = _next_key()
         payload = {
@@ -77,11 +77,17 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
                 GEMINI_URL,
                 params={"key": api_key},
                 json=payload,
-                timeout=30.0,
+                timeout=60.0,
             )
             if response.status_code == 429:
                 # Rate limited on this key, try the next one.
                 logger.info("Gemini key rate-limited, rotating to next key.")
+                continue
+            if response.status_code == 503:
+                # Model overloaded, retry with next key after short wait.
+                logger.info("Gemini model overloaded (503), rotating to next key.")
+                import time
+                time.sleep(1)
                 continue
             if response.status_code != 200:
                 logger.warning("Gemini API returned %s: %s", response.status_code, response.text[:200])
@@ -146,6 +152,7 @@ Untuk level per kata: gunakan "netral" untuk Indonesia/Asing, "ngoko"/"krama"/"k
 
     result = _call_gemini(prompt, temperature=0.1)
     if not result:
+        logger.warning("detect_with_gemini: _call_gemini returned None")
         return None
 
     try:
@@ -166,8 +173,8 @@ Untuk level per kata: gunakan "netral" untuk Indonesia/Asing, "ngoko"/"krama"/"k
                 "kramaPercentage": parsed.get("kramaPercentage", 50.0),
                 "wordAnalysis": parsed.get("wordAnalysis", []),
             }
-    except (json.JSONDecodeError, KeyError):
-        pass
+    except (json.JSONDecodeError, KeyError) as exc:
+        logger.warning("detect_with_gemini: JSON parse failed: %s | raw: %s", exc, result[:200])
     return None
 
 
@@ -280,7 +287,7 @@ def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | N
         },
     }
 
-    attempts = min(len(GEMINI_API_KEYS), 5)
+    attempts = len(GEMINI_API_KEYS)
     for _ in range(attempts):
         api_key = _next_key()
         try:
@@ -292,6 +299,11 @@ def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | N
             )
             if response.status_code == 429:
                 logger.info("Gemini chat key rate-limited, rotating.")
+                continue
+            if response.status_code == 503:
+                logger.info("Gemini chat model overloaded (503), rotating.")
+                import time
+                time.sleep(1)
                 continue
             if response.status_code != 200:
                 logger.warning("Gemini chat returned %s: %s", response.status_code, response.text[:200])
