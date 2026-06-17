@@ -27,7 +27,7 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 * **Backend**: FastAPI (Python 3.12+, Uvicorn Server)
 * **Database**: SQLite (via SQLAlchemy ORM)
 * **Pemrosesan Dokumen**: PyMuPDF (untuk PDF) & python-docx (untuk DOCX)
-* **Machine Learning**: HuggingFace Transformers (NLLB-200 fine-tuned untuk NMT) & scikit-learn (TF-IDF + Logistic Regression untuk deteksi bahasa/register). Backend otomatis fallback ke mesin rule-based bila artefak model tidak tersedia.
+* **AI / LLM**: Google Gemini API (terjemahan fallback + chatbot multilingual)
 
 ---
 
@@ -35,47 +35,35 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 ```text
 FP-AI-Kelompok7/
 ├── backend/            # Source code server FastAPI (Python)
-│   └── ml/             # Layer ML: config, data prep, inferensi (NMT + classifier)
 ├── frontend/           # Source code website Next.js (TypeScript & React)
-├── training/           # Notebook Google Colab untuk melatih model
-├── models/             # Artefak model hasil training (di-gitignore; dibuat dari notebook)
+├── Dataset/            # Dataset kamus Jawa-Indonesia, Madura-Indonesia
 ├── assets/             # Aset gambar & batik visual pendukung
-├── .gitignore          # File konfigurasi abaikan git (venv, node_modules, db disembunyikan)
+├── .gitignore          # File konfigurasi abaikan git
 └── README.md           # Dokumentasi utama proyek
 ```
 
 ---
 
-## 🧠 Model Machine Learning
+## � Integrasi AI (Gemini)
 
-HeritageGuard kini memakai model ML sungguhan untuk terjemahan dan deteksi register, dengan **fallback rule-based** otomatis agar aplikasi tetap berjalan walau model belum dilatih.
+HeritageGuard menggunakan **Google Gemini API** untuk dua kapabilitas AI:
 
-### Apakah harus melatih model dulu?
-- **Tanpa training**: backend langsung jalan memakai mesin rule-based (kamus + frasa). Tidak ada langkah tambahan.
-- **Dengan model ML**: latih model lewat notebook Colab, taruh artefaknya di `models/`, lalu backend otomatis memakainya.
+### 1. Fallback Terjemahan Cerdas
+Ketika kalimat input mengandung kata-kata di luar kamus lokal (rule-based tidak bisa menerjemahkan dengan baik), sistem otomatis memanggil Gemini untuk menghasilkan terjemahan lengkap dengan tingkat tutur yang sesuai.
 
-### Langkah melatih (Google Colab, GPU gratis)
-1. Buka `training/HeritageGuard_Train_Colab.ipynb` di [Google Colab](https://colab.research.google.com/).
-2. Set **Runtime ▸ Change runtime type ▸ GPU**.
-3. Edit `REPO_URL` di sel clone agar menunjuk ke repo kamu, lalu jalankan semua sel berurutan.
-4. Notebook akan: menyiapkan korpus dari `Dataset/`, melatih classifier scikit-learn, fine-tune NLLB-200, lalu menghasilkan `heritageguard_models.zip`.
-5. Unduh zip itu, ekstrak ke folder `models/` di root repo sehingga strukturnya:
-   ```text
-   models/
-     nmt/                 # model + tokenizer hasil fine-tune
-     register_clf.joblib  # bundle classifier (bahasa, register, gaya)
-   ```
+Alur: `Input → Rule-based (kamus lokal) → Jika coverage rendah → Gemini AI`
 
-### Mengaktifkan model di backend
-1. Pasang dependensi ML (uncomment baris torch/transformers di `backend/requirements.txt`):
-   ```bash
-   pip install -r backend/requirements.txt
-   pip install torch transformers sentencepiece
-   ```
-2. Jalankan backend seperti biasa. Cek `GET /api/health` — field `engine` akan bernilai `ml` jika model aktif, atau `rule-based` jika fallback.
-3. (Opsional) Ubah lokasi artefak lewat env `HG_MODEL_DIR`.
+### 2. Chatbot Multilingual
+Fitur chatbot yang bisa diajak berbicara dalam Bahasa Indonesia, Jawa (Ngoko & Krama), dan Madura (Enja-Iya & Engghi-Bhanten). Chatbot memahami konteks budaya dan bisa membantu pengguna belajar bahasa daerah.
 
-> **Catatan akademik**: dataset proyek relatif kecil (kamus + dump kalimat), sehingga kualitas terjemahan neural terbatas. Arsitektur ML sudah sungguhan dan dapat ditingkatkan dengan menambah data paralel.
+### Konfigurasi
+Set environment variable `GEMINI_API_KEY` sebelum menjalankan backend:
+```bash
+export GEMINI_API_KEY="your-api-key-here"
+uvicorn backend.main:app --port 8000 --reload
+```
+
+> Tanpa API key, backend tetap berfungsi (fitur terjemahan rule-based aktif, chatbot mengembalikan error 503).
 
 ---
 

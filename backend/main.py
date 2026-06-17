@@ -1,7 +1,6 @@
 import hashlib
 import os
 import re
-import threading
 import time
 import zipfile
 from pathlib import Path
@@ -31,6 +30,7 @@ from .document_service import (
     process_and_translate_doc,
     process_and_translate_txt,
 )
+from .gemini_service import translate_with_gemini, chat_with_gemini
 
 app = FastAPI(title="HeritageGuard Core API", description="AI Preservasi Bahasa Jawa & Madura")
 
@@ -76,6 +76,14 @@ class TranslationRequest(BaseModel):
     target_lang: str
     level: str  # 'low' or 'high'
 
+class ChatMessage(BaseModel):
+    role: str  # 'user' or 'assistant'
+    text: str
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] | None = None
+
 # Temp directories for document processing
 BASE_DIR = Path(__file__).resolve().parents[1]
 UPLOAD_DIR = BASE_DIR / "temp_uploads"
@@ -99,23 +107,6 @@ MEDIA_TYPES = {
 def startup_event():
     init_db()
     _cleanup_old_files()
-    _warm_up_models()
-
-def _warm_up_models():
-    """Preload ML artifacts in a background thread so /api/health stays responsive.
-
-    If artifacts or ML libraries are missing, the loaders mark the model as
-    unavailable and the app silently uses the rule-based fallback.
-    """
-    def _load():
-        try:
-            from .ml import inference as ml_inference
-            ml_inference.nmt_available()
-            ml_inference.classifier_available()
-        except Exception:
-            pass
-
-    threading.Thread(target=_load, daemon=True).start()
 
 @app.get("/")
 def read_root():
@@ -123,12 +114,7 @@ def read_root():
 
 @app.get("/api/health")
 def health_check():
-    try:
-        from .ml import inference as ml_inference
-        engine = "ml" if (ml_inference.nmt_available() or ml_inference.classifier_available()) else "rule-based"
-    except Exception:
-        engine = "rule-based"
-    return {"status": "ok", "version": "1.2.0", "engine": engine}
+    return {"status": "ok", "version": "2.0.0"}
 
 def _redacted_marker(text: str) -> str:
     digest = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:12]
@@ -239,9 +225,30 @@ def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=413, detail="Text too long")
     _validate_language(req.source_lang, req.target_lang, req.level)
 
-    # Run AI Translation and Classification pipeline
+    # Run rule-based Translation and Classification pipeline
     result = translate_and_classify(req.text, req.source_lang, req.target_lang, req.level)
-    
+
+    # Gemini LLM fallback: if rule-based produced low-quality output (many words
+    # left untranslated), try Gemini for a better translation.
+    if req.source_lang != req.target_lang:
+        translated = result["translatedText"]
+        source_words = set(re.sub(r"[^\w\s]", "", req.text.lower()).split())
+        translated_words = set(re.sub(r"[^\w\s]", "", translated.lower()).split())
+        # If more than 60% of source words survived unchanged in the output,
+        # that means rule-based couldn't translate most of them.
+        overlap = source_words & translated_words
+        coverage_ratio = len(overlap) / max(len(source_words), 1)
+        if coverage_ratio > 0.6 and len(source_words) > 1:
+            gemini_translation = translate_with_gemini(
+                req.text, req.source_lang, req.target_lang, req.level
+            )
+            if gemini_translation and gemini_translation.strip():
+                result["translatedText"] = gemini_translation
+                result["context"] = (
+                    "Terjemahan dihasilkan oleh Gemini AI karena kosakata di luar jangkauan kamus lokal. "
+                    + result.get("context", "")
+                )
+
     # Save privacy-preserving operational log in SQLite.
     log = TranslationLog(
         source_text=_redacted_marker(req.text),
@@ -381,4 +388,25 @@ def get_insights(db: Session = Depends(get_db)):
             "jv_scores": [96, 88, 72, 55, 48],
             "mad_scores": [92, 83, 68, 49, 42]
         }
+    }
+
+@app.post("/api/chat")
+def chatbot(req: ChatRequest):
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    if len(req.message) > MAX_TEXT_CHARS:
+        raise HTTPException(status_code=413, detail="Message too long")
+
+    history = [{"role": m.role, "text": m.text} for m in (req.history or [])]
+    response = chat_with_gemini(req.message, history)
+
+    if response is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Chatbot sedang tidak tersedia. Pastikan GEMINI_API_KEY sudah dikonfigurasi."
+        )
+
+    return {
+        "response": response,
+        "role": "assistant",
     }
