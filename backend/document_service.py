@@ -38,8 +38,18 @@ def _summary(output_path: str, target_lang: str, level: str, translated_text: st
 
 
 def _translate_block(text: str, source_lang: str, target_lang: str, level: str) -> str:
+    """Translate a block of text using Gemini+RAG, falling back to rule-based."""
     if not text.strip():
         return ""
+    # Try Gemini + RAG first for document translation
+    try:
+        from .gemini_service import translate_with_gemini
+        gemini_result = translate_with_gemini(text, source_lang, target_lang, level)
+        if gemini_result and gemini_result.strip():
+            return gemini_result
+    except Exception:
+        pass
+    # Fallback to rule-based
     result = translate_and_classify(text, source_lang, target_lang, level)
     return result["translatedText"]
 

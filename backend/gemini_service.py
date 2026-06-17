@@ -234,7 +234,13 @@ Panduan:
 - Jika pengguna berbicara dalam Bahasa Madura, jawab dalam Bahasa Madura.
 - Jika pengguna berbicara Indonesia, jawab dalam Bahasa Indonesia.
 - Selalu ramah, informatif, dan mendukung pelestarian bahasa daerah.
-- Jawaban singkat dan padat, tidak perlu terlalu panjang kecuali diminta."""
+- Jawaban singkat dan padat, tidak perlu terlalu panjang kecuali diminta.
+
+BATASAN PENTING:
+- Kamu HANYA boleh membahas topik seputar Bahasa Indonesia, Bahasa Jawa, dan Bahasa Madura.
+- Termasuk: kosakata, tata bahasa, budaya Jawa/Madura, tradisi, sastra daerah, tingkat tutur, terjemahan, dan pembelajaran bahasa.
+- Jika pengguna bertanya di luar topik tersebut (misalnya politik, teknologi umum, matematika, dll), tolak dengan sopan dan arahkan kembali ke topik bahasa/budaya daerah.
+- Contoh penolakan: "Maaf, saya hanya bisa membantu seputar Bahasa Indonesia, Jawa, dan Madura beserta budayanya. Ada yang ingin Anda tanyakan tentang bahasa daerah?" """
 
 
 def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | None:

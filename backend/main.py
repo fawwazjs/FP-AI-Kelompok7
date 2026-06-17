@@ -237,47 +237,26 @@ def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=413, detail="Text too long")
     _validate_language(req.source_lang, req.target_lang, req.level)
 
-    result = None
+    # Rule-based first (instant response)
+    result = translate_and_classify(req.text, req.source_lang, req.target_lang, req.level)
 
-    # Primary: Gemini + RAG translation
+    # Gemini fallback: only if rule-based has low coverage (>60% words unchanged)
     if req.source_lang != req.target_lang:
-        gemini_translation = translate_with_gemini(
-            req.text, req.source_lang, req.target_lang, req.level
-        )
-        if gemini_translation and gemini_translation.strip():
-            # Determine politeness metadata
-            is_high = req.level == "high"
-            if req.target_lang == "jv":
-                pol_level = "Krama Alus" if is_high else "Ngoko Lugu"
-            elif req.target_lang == "mad":
-                pol_level = "Engghi-Bhanten" if is_high else "Enja-Iya"
-            else:
-                pol_level = "Netral"
-            krama_pct = 85.0 if is_high else 15.0
-            ngoko_pct = 100.0 - krama_pct
-            if req.target_lang == "id":
-                pol_level = "Netral"
-                krama_pct = 0.0
-                ngoko_pct = 0.0
-
-            # Get alternative (opposite level)
-            alt_level = "low" if is_high else "high"
-            alternative = translate_with_gemini(req.text, req.source_lang, req.target_lang, alt_level)
-            if alternative and alternative.strip() == gemini_translation.strip():
-                alternative = None
-
-            result = {
-                "translatedText": gemini_translation,
-                "politenessLevel": pol_level,
-                "ngokoPercentage": ngoko_pct,
-                "kramaPercentage": krama_pct,
-                "context": f"Terjemahan dihasilkan oleh Gemini AI + RAG (grounded pada {15588} entri kamus lokal).",
-                "alternativeText": alternative,
-            }
-
-    # Fallback: rule-based if Gemini failed or same-language
-    if result is None:
-        result = translate_and_classify(req.text, req.source_lang, req.target_lang, req.level)
+        translated = result["translatedText"]
+        source_words = set(re.sub(r"[^\w\s]", "", req.text.lower()).split())
+        translated_words = set(re.sub(r"[^\w\s]", "", translated.lower()).split())
+        overlap = source_words & translated_words
+        coverage_ratio = len(overlap) / max(len(source_words), 1)
+        if coverage_ratio > 0.6 and len(source_words) > 2:
+            gemini_translation = translate_with_gemini(
+                req.text, req.source_lang, req.target_lang, req.level
+            )
+            if gemini_translation and gemini_translation.strip():
+                result["translatedText"] = gemini_translation
+                result["context"] = (
+                    "Terjemahan dihasilkan oleh Gemini AI + RAG karena kosakata di luar jangkauan kamus lokal. "
+                    + result.get("context", "")
+                )
 
     # Save privacy-preserving operational log in SQLite.
     log = TranslationLog(
