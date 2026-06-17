@@ -99,6 +99,64 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
     return None
 
 
+def detect_with_gemini(text: str) -> dict | None:
+    """Use Gemini + RAG to detect language and register.
+
+    Returns {language, register, explanation} or None if unavailable.
+    """
+    rag_context = ""
+    try:
+        from .rag_service import get_rag_context
+        rag_context = get_rag_context(text, top_k=8)
+    except Exception:
+        pass
+
+    prompt = f"""Kamu adalah ahli linguistik bahasa daerah Indonesia yang menguasai Bahasa Indonesia, Bahasa Jawa, dan Bahasa Madura.
+
+Analisis teks berikut dan tentukan:
+1. Bahasa apa yang digunakan (pilih salah satu: Indonesia, Jawa, Madura)
+2. Register/tingkat tutur yang digunakan:
+   - Untuk Indonesia: "formal" atau "informal"
+   - Untuk Jawa: "ngoko lugu", "ngoko alus", "krama lugu", atau "krama alus"
+   - Untuk Madura: "Enja-Iya", "Engghi-enten", atau "Engghi-bhunten"
+
+{"Referensi kosakata dari database lokal:" if rag_context else ""}
+{rag_context}
+
+Teks yang dianalisis: "{text}"
+
+Jawab HANYA dalam format JSON berikut (tanpa markdown, tanpa penjelasan lain):
+{{"language": "...", "register": "...", "explanation": "..."}}
+
+Untuk explanation, jelaskan singkat mengapa kamu memilih bahasa dan register tersebut (dalam Bahasa Indonesia, 1-2 kalimat)."""
+
+    result = _call_gemini(prompt, temperature=0.1)
+    if not result:
+        return None
+
+    # Parse JSON from Gemini response
+    try:
+        import json
+        # Strip markdown code fences if present
+        clean = result.strip()
+        if clean.startswith("```"):
+            clean = "\n".join(clean.split("\n")[1:])
+        if clean.endswith("```"):
+            clean = clean[:-3]
+        clean = clean.strip()
+        parsed = json.loads(clean)
+        # Validate required fields
+        if "language" in parsed and "register" in parsed:
+            return {
+                "language": parsed["language"],
+                "register": parsed["register"],
+                "explanation": parsed.get("explanation", "Dianalisis oleh Gemini AI."),
+            }
+    except (json.JSONDecodeError, KeyError):
+        pass
+    return None
+
+
 def translate_with_gemini(text: str, source_lang: str, target_lang: str, level: str) -> str | None:
     """Use Gemini to translate text when the rule-based engine can't handle it.
 
