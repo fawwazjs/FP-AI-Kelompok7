@@ -57,11 +57,12 @@ Alur: `Input → Rule-based (kamus lokal) → Jika coverage rendah → Gemini AI
 Fitur chatbot yang bisa diajak berbicara dalam Bahasa Indonesia, Jawa (Ngoko & Krama), dan Madura (Enja-Iya & Engghi-Bhanten). Chatbot memahami konteks budaya dan bisa membantu pengguna belajar bahasa daerah.
 
 ### Konfigurasi
-Set environment variable `GEMINI_API_KEY` sebelum menjalankan backend:
+Set environment variable `GEMINI_API_KEYS` (pisahkan dengan koma untuk rotasi multi-key):
 ```bash
-export GEMINI_API_KEY="your-api-key-here"
+export GEMINI_API_KEYS="key1,key2,key3"
 uvicorn backend.main:app --port 8000 --reload
 ```
+Sistem akan merotasi key secara round-robin. Jika satu key kena rate-limit (429), otomatis pindah ke key berikutnya.
 
 > Tanpa API key, backend tetap berfungsi (fitur terjemahan rule-based aktif, chatbot mengembalikan error 503).
 
