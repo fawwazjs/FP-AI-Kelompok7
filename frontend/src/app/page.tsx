@@ -1243,72 +1243,25 @@ export default function HeritageGuardApp() {
                     {detectorResult.wordAnalysis && detectorResult.wordAnalysis.length > 0 && (
                       <div className="border-t border-neutral-light dark:border-gray-700 pt-3">
                         <span className="text-xs text-text-muted font-bold block mb-3">ANALISIS PER-KATA:</span>
-                        
-                        {/* Sentence view - kata-kata ditampilkan inline seperti kalimat */}
-                        <div className="bg-white dark:bg-gray-900 border border-border-color dark:border-gray-700 rounded-xl p-4 mb-3">
-                          <div className="flex flex-wrap gap-1 leading-relaxed">
-                            {detectorResult.wordAnalysis.map((wa, idx) => {
-                              const colors = wa.language === 'Jawa' 
-                                ? { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', text: 'text-green-700 dark:text-green-300', dot: 'bg-green-500' }
-                                : wa.language === 'Madura' 
-                                ? { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', text: 'text-purple-700 dark:text-purple-300', dot: 'bg-purple-500' }
-                                : wa.language === 'Indonesia' 
-                                ? { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', dot: 'bg-blue-500' }
-                                : { bg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' };
-                              return (
-                                <span key={idx} className={`group relative inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border ${colors.bg} ${colors.border} cursor-default transition-all hover:shadow-md hover:-translate-y-0.5`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
-                                  <span className={`font-semibold text-sm ${colors.text}`}>{wa.word}</span>
-                                  {/* Tooltip on hover */}
-                                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[11px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-lg z-10">
-                                    <span className="font-bold">{wa.language}</span> • {wa.level}
-                                    <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-100" />
-                                  </span>
-                                </span>
-                              );
-                            })}
-                          </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {detectorResult.wordAnalysis.map((wa, idx) => {
+                            const langColor = wa.language === 'Jawa' ? 'bg-green-100 border-green-300 text-green-900 dark:bg-green-900/40 dark:border-green-600 dark:text-green-200'
+                              : wa.language === 'Madura' ? 'bg-purple-100 border-purple-300 text-purple-900 dark:bg-purple-900/40 dark:border-purple-600 dark:text-purple-200'
+                              : wa.language === 'Indonesia' ? 'bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-900/40 dark:border-blue-600 dark:text-blue-200'
+                              : 'bg-gray-100 border-gray-300 text-gray-900 dark:bg-gray-700 dark:border-gray-500 dark:text-gray-200';
+                            return (
+                              <span key={idx} className={`inline-flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-xs ${langColor}`}>
+                                <span className="font-bold text-sm">{wa.word}</span>
+                                <span className="text-[10px] font-medium opacity-80">{wa.language} • {wa.level}</span>
+                              </span>
+                            );
+                          })}
                         </div>
-
-                        {/* Table view */}
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs border-collapse">
-                            <thead>
-                              <tr className="border-b border-border-color dark:border-gray-700">
-                                <th className="text-left py-2 px-2 text-text-muted font-bold">Kata</th>
-                                <th className="text-left py-2 px-2 text-text-muted font-bold">Bahasa</th>
-                                <th className="text-left py-2 px-2 text-text-muted font-bold">Tingkat Tutur</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {detectorResult.wordAnalysis.map((wa, idx) => {
-                                const dotColor = wa.language === 'Jawa' ? 'bg-green-500'
-                                  : wa.language === 'Madura' ? 'bg-purple-500'
-                                  : wa.language === 'Indonesia' ? 'bg-blue-500'
-                                  : 'bg-gray-400';
-                                return (
-                                  <tr key={idx} className="border-b border-border-color/50 dark:border-gray-700/50 hover:bg-neutral-light/50 dark:hover:bg-gray-800/50">
-                                    <td className="py-1.5 px-2 font-semibold text-text-dark dark:text-gray-200">{wa.word}</td>
-                                    <td className="py-1.5 px-2">
-                                      <span className="inline-flex items-center gap-1">
-                                        <span className={`w-2 h-2 rounded-full ${dotColor}`} />
-                                        <span className="text-text-medium dark:text-gray-300">{wa.language}</span>
-                                      </span>
-                                    </td>
-                                    <td className="py-1.5 px-2 text-text-medium dark:text-gray-400 italic">{wa.level}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Legend */}
-                        <div className="flex flex-wrap gap-4 mt-3 pt-2 border-t border-border-color/50 dark:border-gray-700/50">
-                          <span className="flex items-center gap-1.5 text-[11px] text-text-muted"><span className="w-3 h-3 bg-green-500 rounded-full" /> Jawa</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-text-muted"><span className="w-3 h-3 bg-purple-500 rounded-full" /> Madura</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-text-muted"><span className="w-3 h-3 bg-blue-500 rounded-full" /> Indonesia</span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-text-muted"><span className="w-3 h-3 bg-gray-400 rounded-full" /> Asing/Netral</span>
+                        <div className="flex gap-4 mt-3 text-[11px] text-text-muted">
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-full" /> Jawa</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-purple-500 rounded-full" /> Madura</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-blue-500 rounded-full" /> Indonesia</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-gray-400 rounded-full" /> Asing</span>
                         </div>
                       </div>
                     )}
