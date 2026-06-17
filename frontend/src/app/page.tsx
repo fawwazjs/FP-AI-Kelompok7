@@ -24,11 +24,13 @@ import {
   Play,
   AlertCircle,
   Sun,
-  Moon
+  Moon,
+  MessageCircle,
+  Send
 } from 'lucide-react';
 
 // --- TYPE DEFINITIONS & LOCAL DATA ---
-type PageType = 'landing' | 'translator' | 'doc-translator' | 'detector' | 'insights' | 'about';
+type PageType = 'landing' | 'translator' | 'doc-translator' | 'detector' | 'insights' | 'about' | 'chatbot';
 
 interface TranslationResult {
   translatedText: string;
@@ -260,6 +262,12 @@ export default function HeritageGuardApp() {
   const [detectorResult, setDetectorResult] = useState<{ language: string; register: string; explanation: string } | null>(null);
   const [loadingDetect, setLoadingDetect] = useState(false);
 
+  // --- CHATBOT STATE ---
+  const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Auto cycle word of the day
   useEffect(() => {
     const timer = setInterval(() => {
@@ -412,6 +420,38 @@ export default function HeritageGuardApp() {
     }
   };
 
+  // --- CHATBOT LOGIC ---
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const userMsg = { role: 'user', text: chatInput };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg.text,
+          history: chatMessages.slice(-10)
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setChatMessages(prev => [...prev, { role: 'assistant', text: data.response }]);
+      } else {
+        const err = await response.json().catch(() => ({ detail: 'Chatbot tidak tersedia.' }));
+        setChatMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${err.detail || 'Terjadi kesalahan.'}` }]);
+      }
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'assistant', text: '⚠️ Tidak dapat terhubung ke server. Pastikan backend berjalan.' }]);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  };
+
   // Switch hash route support
   useEffect(() => {
     const handleHash = () => {
@@ -422,6 +462,7 @@ export default function HeritageGuardApp() {
       else if (hash === '#deteksi') setActivePage('detector');
       else if (hash === '#statistik') setActivePage('insights');
       else if (hash === '#tentang') setActivePage('about');
+      else if (hash === '#chatbot') setActivePage('chatbot');
     };
     window.addEventListener('hashchange', handleHash);
     handleHash();
@@ -439,7 +480,8 @@ export default function HeritageGuardApp() {
       'doc-translator': '#dokumen',
       detector: '#deteksi',
       insights: '#statistik',
-      about: '#tentang'
+      about: '#tentang',
+      chatbot: '#chatbot'
     };
     window.location.hash = hashes[page];
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -796,6 +838,10 @@ export default function HeritageGuardApp() {
             Tentang
             {activePage === 'about' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
+          <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'chatbot' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('chatbot')}>
+            Chatbot AI
+            {activePage === 'chatbot' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
+          </li>
           <li className="flex items-center">
             <button onClick={toggleTheme} className="text-text-medium hover:text-primary p-2 rounded-lg hover:bg-neutral-light cursor-pointer smooth-transition" title="Ubah Tema">
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -822,6 +868,7 @@ export default function HeritageGuardApp() {
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('detector')}>Deteksi Register</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('insights')}>Insights & Statistik</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('about')}>Tentang</div>
+            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('chatbot')}>Chatbot AI</div>
             <button onClick={toggleTheme} className="flex items-center justify-center gap-2 border border-border-color py-2.5 rounded-lg text-text-medium font-semibold text-sm w-full cursor-pointer smooth-transition hover:bg-neutral-light">
               {theme === 'light' ? <><Moon size={16} /> Mode Gelap</> : <><Sun size={16} /> Mode Terang</>}
             </button>
@@ -1528,6 +1575,80 @@ export default function HeritageGuardApp() {
               </div>
             </div>
 
+          </div>
+        </main>
+      )}
+
+      {/* CHATBOT PAGE VIEW */}
+      {activePage === 'chatbot' && (
+        <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8 flex flex-col">
+          <div className="text-center mb-6">
+            <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">AI Chatbot</span>
+            <h2 className="font-heading font-bold text-3xl text-primary dark:text-white">HeritageGuard AI</h2>
+            <p className="text-text-medium text-sm mt-2">Ajak bicara dalam Bahasa Indonesia, Jawa, atau Madura. Tanyakan tentang budaya, kosakata, atau minta terjemahan.</p>
+          </div>
+
+          <div className="flex-1 bg-card-bg dark:bg-gray-800 border border-border-color dark:border-gray-700 rounded-2xl flex flex-col overflow-hidden shadow-sm">
+            {/* Chat messages area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[400px] max-h-[500px]">
+              {chatMessages.length === 0 && (
+                <div className="text-center text-text-muted dark:text-gray-400 py-16">
+                  <MessageCircle size={48} className="mx-auto mb-4 opacity-30" />
+                  <p className="text-sm">Mulai percakapan dengan mengetik pesan di bawah.</p>
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    {['Ajari aku bahasa Jawa!', 'Piye kabare?', 'Apa itu Krama Alus?', 'Sengko\' terro belajar Madura'].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        onClick={() => { setChatInput(suggestion); }}
+                        className="text-xs bg-primary/5 dark:bg-gray-700 border border-primary/10 dark:border-gray-600 text-primary dark:text-gray-200 px-3 py-1.5 rounded-full hover:bg-primary/10 dark:hover:bg-gray-600 cursor-pointer smooth-transition"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    msg.role === 'user'
+                      ? 'bg-primary text-white rounded-br-md'
+                      : 'bg-neutral-light dark:bg-gray-700 text-text-dark dark:text-gray-100 rounded-bl-md border border-border-color dark:border-gray-600'
+                  }`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-neutral-light dark:bg-gray-700 border border-border-color dark:border-gray-600 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-text-muted dark:text-gray-400">
+                    <span className="animate-pulse">Mengetik...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Chat input */}
+            <div className="border-t border-border-color dark:border-gray-700 p-4">
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
+                  placeholder="Ketik pesan dalam bahasa apapun..."
+                  className="flex-1 bg-white dark:bg-gray-900 border border-border-color dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-text-dark dark:text-gray-100 placeholder:text-text-muted dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary smooth-transition"
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="bg-primary hover:bg-primary/90 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white px-5 py-3 rounded-xl flex items-center gap-2 font-semibold text-sm cursor-pointer smooth-transition disabled:cursor-not-allowed"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+            </div>
           </div>
         </main>
       )}
