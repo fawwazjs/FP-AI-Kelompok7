@@ -8,7 +8,9 @@ import httpx
 logger = logging.getLogger("heritageguard.gemini")
 
 GEMINI_API_KEYS: list[str] = [
-    k.strip() for k in os.getenv("GEMINI_API_KEYS", "YOUR_GEMINI_API_KEY_HERE").split(",")
+    k.strip() for k in os.getenv("GEMINI_API_KEYS", 
+    "AIzaSyA_placeholder1,AIzaSyB_placeholder2,AIzaSyC_placeholder3" # key
+    ).split(",")
     if k.strip()
 ]
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
@@ -46,7 +48,10 @@ LEVEL_DESCRIPTIONS = {
 
 
 def _is_configured() -> bool:
-    return bool(GEMINI_API_KEYS) and GEMINI_API_KEYS[0] != "YOUR_GEMINI_API_KEY_HERE"
+    if not GEMINI_API_KEYS:
+        return False
+    first = GEMINI_API_KEYS[0]
+    return first and "placeholder" not in first.lower() and "YOUR_" not in first
 
 
 def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
