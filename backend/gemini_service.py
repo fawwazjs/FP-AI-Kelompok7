@@ -100,9 +100,9 @@ def _call_gemini(prompt: str, temperature: float = 0.3) -> str | None:
 
 
 def detect_with_gemini(text: str) -> dict | None:
-    """Use Gemini + RAG to detect language and register.
+    """Use Gemini + RAG to detect language and register, with per-word analysis.
 
-    Returns {language, register, explanation} or None if unavailable.
+    Returns {language, register, explanation, ngokoPercentage, kramaPercentage, wordAnalysis} or None.
     """
     rag_context = ""
     try:
@@ -113,12 +113,14 @@ def detect_with_gemini(text: str) -> dict | None:
 
     prompt = f"""Kamu adalah ahli linguistik bahasa daerah Indonesia yang menguasai Bahasa Indonesia, Bahasa Jawa, dan Bahasa Madura.
 
-Analisis teks berikut dan tentukan:
-1. Bahasa apa yang digunakan (pilih salah satu: Indonesia, Jawa, Madura)
-2. Register/tingkat tutur yang digunakan:
-   - Untuk Indonesia: "formal" atau "informal"
-   - Untuk Jawa: "ngoko lugu", "ngoko alus", "krama lugu", atau "krama alus"
-   - Untuk Madura: "Enja-Iya", "Engghi-enten", atau "Engghi-bhunten"
+Analisis teks berikut dan berikan:
+1. Bahasa dominan keseluruhan (Indonesia, Jawa, Madura)
+2. Register/tingkat tutur:
+   - Indonesia: "formal" atau "informal"
+   - Jawa: "ngoko lugu", "ngoko alus", "krama lugu", atau "krama alus"
+   - Madura: "Enja-Iya", "Engghi-enten", atau "Engghi-bhunten"
+3. Persentase kesopanan: ngokoPercentage (kasual) dan kramaPercentage (sopan) yang totalnya 100
+4. Analisis per-kata: untuk SETIAP kata dalam teks, tentukan bahasanya (Indonesia/Jawa/Madura/Asing) dan tingkat tuturnya (netral/ngoko/krama/halus/kasar)
 
 {"Referensi kosakata dari database lokal:" if rag_context else ""}
 {rag_context}
@@ -126,18 +128,28 @@ Analisis teks berikut dan tentukan:
 Teks yang dianalisis: "{text}"
 
 Jawab HANYA dalam format JSON berikut (tanpa markdown, tanpa penjelasan lain):
-{{"language": "...", "register": "...", "explanation": "..."}}
+{{
+  "language": "...",
+  "register": "...",
+  "explanation": "...",
+  "ngokoPercentage": 0.0,
+  "kramaPercentage": 0.0,
+  "wordAnalysis": [
+    {{"word": "kata1", "language": "Jawa", "level": "krama"}},
+    {{"word": "kata2", "language": "Indonesia", "level": "netral"}}
+  ]
+}}
 
-Untuk explanation, jelaskan singkat mengapa kamu memilih bahasa dan register tersebut (dalam Bahasa Indonesia, 1-2 kalimat)."""
+Untuk explanation, jelaskan singkat dalam Bahasa Indonesia (1-2 kalimat).
+ngokoPercentage + kramaPercentage harus = 100.
+Untuk level per kata: gunakan "netral" untuk Indonesia/Asing, "ngoko"/"krama"/"krama inggil" untuk Jawa, "enja-iya"/"engghi-bhunten" untuk Madura."""
 
     result = _call_gemini(prompt, temperature=0.1)
     if not result:
         return None
 
-    # Parse JSON from Gemini response
     try:
         import json
-        # Strip markdown code fences if present
         clean = result.strip()
         if clean.startswith("```"):
             clean = "\n".join(clean.split("\n")[1:])
@@ -145,12 +157,14 @@ Untuk explanation, jelaskan singkat mengapa kamu memilih bahasa dan register ter
             clean = clean[:-3]
         clean = clean.strip()
         parsed = json.loads(clean)
-        # Validate required fields
         if "language" in parsed and "register" in parsed:
             return {
                 "language": parsed["language"],
                 "register": parsed["register"],
                 "explanation": parsed.get("explanation", "Dianalisis oleh Gemini AI."),
+                "ngokoPercentage": parsed.get("ngokoPercentage", 50.0),
+                "kramaPercentage": parsed.get("kramaPercentage", 50.0),
+                "wordAnalysis": parsed.get("wordAnalysis", []),
             }
     except (json.JSONDecodeError, KeyError):
         pass
