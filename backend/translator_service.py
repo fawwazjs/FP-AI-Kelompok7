@@ -71,6 +71,26 @@ PHRASES_DB = {
             'high': 'Nami kula Ahmad, kula dalem ing Surabaya.',
             'low': 'Jenengku Ahmad, aku manggon ing Surabaya.',
             'context': 'Menyebut diri sendiri di tingkat Krama menggunakan kata "Nami" (nama) dan "Dalem/Manggen" (tinggal).'
+        },
+        'aku sedang di jalan': {
+            'high': 'Kula wonten teng dalan',
+            'low': 'Aku neng dalan',
+            'context': 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+        },
+        'saya sedang di jalan': {
+            'high': 'Kula wonten teng dalan',
+            'low': 'Aku neng dalan',
+            'context': 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+        },
+        'aku di jalan': {
+            'high': 'Kula wonten teng dalan',
+            'low': 'Aku neng dalan',
+            'context': 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+        },
+        'saya di jalan': {
+            'high': 'Kula wonten teng dalan',
+            'low': 'Aku neng dalan',
+            'context': 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
         }
     },
     'id_mad': {
@@ -109,6 +129,7 @@ ID_TO_JV = {
     'dia': { 'high': 'piyambakipun', 'low': 'dheweke' },
     'ingin': { 'high': 'badhe', 'low': 'pengen' },
     'makan': { 'high': 'dhahar', 'low': 'mangan' },
+    'makanan': { 'high': 'dhaharan', 'low': 'panganan' },
     'nasi': { 'high': 'sekul', 'low': 'sego' },
     'minum': { 'high': 'ngunjuk', 'low': 'ngombe' },
     'tidur': { 'high': 'sare', 'low': 'turu' },
@@ -137,7 +158,11 @@ ID_TO_JV = {
     'dari': { 'high': 'saking', 'low': 'soko' },
     'dan': { 'high': 'kaliyan', 'low': 'lan' },
     'dengan': { 'high': 'kaliyan', 'low': 'karo' },
-    'bisa': { 'high': 'saged', 'low': 'iso' }
+    'bisa': { 'high': 'saged', 'low': 'iso' },
+    'cara': { 'high': 'cara', 'low': 'cara' },
+    'laku': { 'high': 'tindak', 'low': 'laku' },
+    'memperlakukan': { 'high': 'nindakaken', 'low': 'nglakoni' },
+    'perlakukan': { 'high': 'nindakaken', 'low': 'nglakoni' },
 }
 
 ID_TO_MAD = {
@@ -174,7 +199,8 @@ ID_TO_MAD = {
     'dari': { 'high': 'saking', 'low': 'dhari' },
     'dan': { 'high': 'sareng', 'low': 'ban' },
     'dengan': { 'high': 'sareng', 'low': 'ban' },
-    'bisa': { 'high': 'saged', 'low': 'bisa' }
+    'bisa': { 'high': 'saged', 'low': 'bisa' },
+    'cara': { 'high': 'cara', 'low': 'cara' },
 }
 
 def _register_phrase(pair_key: str, source_text: str, high: str, low: str, context: str):
@@ -324,7 +350,149 @@ def _split_token(raw: str) -> tuple[str, str, str] | None:
         return None
     return match.group(1), match.group(2), match.group(3)
 
-def _translate_word_by_word(text: str, dictionary: dict, level: str) -> tuple[str, str | None, int]:
+def _lookup_dictionary_entry(token: str, dictionary: dict) -> dict | None:
+    for token_key in _key_variants(token):
+        entry = dictionary.get(token_key)
+        if entry:
+            return entry
+    return None
+
+def _dedupe_before_suffix(token: str, suffix: str) -> str | None:
+    if not token.endswith(suffix):
+        return None
+    stem = token[:-len(suffix)]
+    if len(stem) >= 2 and stem[-1] == stem[-2]:
+        return f"{stem[:-1]}{suffix}"
+    return None
+
+def _jv_possessive(translated: str, level: str) -> str:
+    if level == "high":
+        suffix = "nipun" if translated[-1:].lower() in "aiueo" else "ipun"
+    else:
+        suffix = "ne" if translated[-1:].lower() in "aiueo" else "e"
+    return f"{translated}{suffix}"
+
+def _jv_causative(translated: str, level: str) -> str:
+    if level == "high":
+        return f"{translated}aken"
+    if translated.endswith("u"):
+        return f"{translated[:-1]}okno"
+    return f"{translated}no"
+
+def _jv_passive(base_token: str, translated: str, level: str) -> str:
+    if base_token == "makan":
+        return "dipundhahar" if level == "high" else "dipangan"
+    if level == "high":
+        return f"dipun{translated}"
+    return f"di{translated}"
+
+def _jv_locative_compound(token: str, level: str) -> tuple[str, str | None] | None:
+    locative_nouns = {
+        "jalan": {
+            "high": ("wonten margi", "neng dalan"),
+            "low": ("neng dalan", "wonten margi"),
+        },
+    }
+    if not token.startswith("di") or len(token) <= 2:
+        return None
+    base = token[2:]
+    entry = locative_nouns.get(base)
+    if not entry:
+        return None
+    return entry[level]
+
+def _translate_inflected_indonesian_token(
+    token: str,
+    dictionary: dict,
+    level: str,
+    target_lang: str,
+) -> tuple[str, str | None] | None:
+    normalized_candidates = [token]
+    for suffix in ("nya", "kan", "kannya"):
+        normalized = _dedupe_before_suffix(token, suffix)
+        if normalized and normalized not in normalized_candidates:
+            normalized_candidates.append(normalized)
+
+    for normalized in normalized_candidates:
+        entry = _lookup_dictionary_entry(normalized, dictionary)
+        if entry:
+            alt_level = "low" if level == "high" else "high"
+            return entry[level], entry[alt_level] if entry[alt_level] != entry[level] else None
+
+        if target_lang != "jv":
+            continue
+
+        if "-" in normalized:
+            parts = normalized.split("-")
+            if len(parts) == 2 and parts[0] == parts[1] and parts[0]:
+                repeated = _translate_inflected_indonesian_token(
+                    parts[0],
+                    dictionary,
+                    level,
+                    target_lang,
+                )
+                if repeated:
+                    translated, alternative = repeated
+                    alt = f"{alternative}-{alternative}" if alternative else None
+                    return f"{translated}-{translated}", alt
+
+        locative = _jv_locative_compound(normalized, level)
+        if locative:
+            return locative
+
+        if normalized.startswith("di") and len(normalized) > 2:
+            base = normalized[2:]
+            base_translation = _translate_inflected_indonesian_token(
+                base,
+                dictionary,
+                level,
+                target_lang,
+            )
+            if base_translation:
+                translated, alternative = base_translation
+                alt_level = "low" if level == "high" else "high"
+                alt = _jv_passive(base, alternative, alt_level) if alternative else None
+                return _jv_passive(base, translated, level), alt
+
+        if normalized.endswith("nya") and len(normalized) > 3:
+            base_translation = _translate_inflected_indonesian_token(
+                normalized[:-3],
+                dictionary,
+                level,
+                target_lang,
+            )
+            if base_translation:
+                translated, alternative = base_translation
+                alt = _jv_possessive(alternative, "low" if level == "high" else "high") if alternative else None
+                return _jv_possessive(translated, level), alt
+
+        if normalized.endswith("kan") and len(normalized) > 3:
+            for derived in (f"men{normalized}", f"me{normalized}"):
+                entry = _lookup_dictionary_entry(derived, dictionary)
+                if entry:
+                    alt_level = "low" if level == "high" else "high"
+                    return entry[level], entry[alt_level] if entry[alt_level] != entry[level] else None
+
+            base_entry = _lookup_dictionary_entry(normalized[:-3], dictionary)
+            if base_entry:
+                alt_level = "low" if level == "high" else "high"
+                return (
+                    _jv_causative(base_entry[level], level),
+                    _jv_causative(base_entry[alt_level], alt_level),
+                )
+
+        if normalized.startswith("memper") and normalized.endswith("kan"):
+            base_entry = _lookup_dictionary_entry(normalized[6:-3], dictionary)
+            if base_entry:
+                alt_level = "low" if level == "high" else "high"
+                return (
+                    _jv_causative(base_entry[level], level),
+                    _jv_causative(base_entry[alt_level], alt_level),
+                )
+
+    return None
+
+def _translate_word_by_word(text: str, dictionary: dict, level: str, target_lang: str = "jv") -> tuple[str, str | None, int]:
     translated_parts = []
     alternative_parts = []
     translated_count = 0
@@ -342,20 +510,22 @@ def _translate_word_by_word(text: str, dictionary: dict, level: str) -> tuple[st
             continue
 
         prefix, core, suffix = split
-        entry = None
-        for token_key in _key_variants(core):
-            entry = dictionary.get(token_key)
-            if entry:
-                break
-        if not entry:
+        entry = _lookup_dictionary_entry(core, dictionary)
+        inflected = None if entry else _translate_inflected_indonesian_token(core, dictionary, level, target_lang)
+        if not entry and not inflected:
             translated_parts.append(raw)
             alternative_parts.append(raw)
             continue
 
         translated_count += 1
-        alt_level = "low" if level == "high" else "high"
-        replacement = _apply_case(core, entry[level])
-        alternative = _apply_case(core, entry[alt_level])
+        if entry:
+            alt_level = "low" if level == "high" else "high"
+            replacement = _apply_case(core, entry[level])
+            alternative = _apply_case(core, entry[alt_level])
+        else:
+            replacement_text, alternative_text = inflected or (core, None)
+            replacement = _apply_case(core, replacement_text)
+            alternative = _apply_case(core, alternative_text) if alternative_text else replacement
         translated_parts.append(f"{prefix}{replacement}{suffix}")
         alternative_parts.append(f"{prefix}{alternative}{suffix}")
 
@@ -484,7 +654,7 @@ def translate_and_classify(text: str, source: str, target: str, level: str) -> d
     # 3. Word-by-word fallback (Indonesian -> Regional)
     else:
         dict_to_use = ID_TO_JV if target == 'jv' else ID_TO_MAD
-        translated_text, alternative, translated_count = _translate_word_by_word(text, dict_to_use, level)
+        translated_text, alternative, translated_count = _translate_word_by_word(text, dict_to_use, level, target)
         
         is_high = level == 'high'
         politeness_level = "Krama Alus" if target == 'jv' else "Engghi-Bhanten"
@@ -556,6 +726,7 @@ def run_politeness_analysis(text: str, lang: str) -> dict:
 jv_ngoko = {"aku", "kowe", "arep", "mangan", "turu", "luwe", "iki", "yo", "ora", "sing", "opo", "sopo", "piye", "kene", "kono", "nopo", "sego"}
 jv_krama_lugu = {"sampeyan", "nedha", "tilem", "kesah", "tenri"}
 jv_krama_alus = {"kula", "badhe", "dhahar", "sare", "panjenengan", "wonten", "inggih", "mboten", "saking", "pundi", "punapa", "sinten", "kadospundi", "sekul"}
+jv_kasar = {"jancok", "jancuk", "dancok", "cuk", "asu", "bajingan", "raimu", "ndasmu", "matamu", "picek"}
 
 indo_standard = {"saya", "mau", "makan", "tidur", "anda", "kamu", "tidak", "saja", "sudah", "sedang", "mengapa", "sangat", "pergi", "di", "warung", "dekat", "keraton"}
 indo_slang = {"gue", "gua", "lu", "nggak", "aja", "udah", "lagi", "kenapa", "banget", "pengen", "bobo", "mager", "bodo", "yuk", "bro", "selow", "dong", "capek", "pusing"}
@@ -640,13 +811,16 @@ def detect_language_and_register(text: str) -> dict:
     
     if not words:
         return {
-            "language": "Indonesia",
-            "register": "formal",
-            "explanation": "Teks kosong."
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": "Teks kosong, sehingga bahasa dan tingkat tutur belum bisa dianalisis.",
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": [],
         }
         
     indo_score = sum(1 for w in words if w in indo_standard or w in indo_slang)
-    jawa_score = sum(1 for w in words if w in jv_ngoko or w in jv_krama_lugu or w in jv_krama_alus)
+    jawa_score = sum(1 for w in words if w in jv_ngoko or w in jv_krama_lugu or w in jv_krama_alus or w in jv_kasar)
     mad_score = sum(1 for w in words if w in mad_enja_iya or w in mad_engghi_enten or w in mad_engghi_bhunten)
     
     if any(w in words for w in ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe", "inggih", "mboten"]):
@@ -656,9 +830,59 @@ def detect_language_and_register(text: str) -> dict:
         
     scores = {"Indonesia": indo_score, "Jawa": jawa_score, "Madura": mad_score}
     detected_lang = max(scores, key=scores.get)
+    sorted_scores = sorted(scores.values(), reverse=True)
+    top_score = sorted_scores[0]
+    runner_up = sorted_scores[1]
+
+    def analyze_words() -> list[dict]:
+        analysis = []
+        for word in words:
+            if word in jv_kasar:
+                analysis.append({"word": word, "language": "Jawa", "level": "ngoko kasar"})
+            elif word in jv_krama_alus or word in jv_krama_core or word in jv_krama_inggil_verbs:
+                analysis.append({"word": word, "language": "Jawa", "level": "krama"})
+            elif word in jv_krama_lugu:
+                analysis.append({"word": word, "language": "Jawa", "level": "krama lugu"})
+            elif word in jv_ngoko or word in jv_ngoko_core:
+                analysis.append({"word": word, "language": "Jawa", "level": "ngoko"})
+            elif word in mad_engghi_bhunten or word in mad_engghi_bhunten_core:
+                analysis.append({"word": word, "language": "Madura", "level": "engghi-bhunten"})
+            elif word in mad_engghi_enten or word in mad_engghi_enten_core:
+                analysis.append({"word": word, "language": "Madura", "level": "engghi-enten"})
+            elif word in mad_enja_iya or word in mad_enja_iya_core:
+                analysis.append({"word": word, "language": "Madura", "level": "enja-iya"})
+            elif word in indo_slang:
+                analysis.append({"word": word, "language": "Indonesia", "level": "informal"})
+            elif word in indo_standard:
+                analysis.append({"word": word, "language": "Indonesia", "level": "netral"})
+            else:
+                analysis.append({"word": word, "language": "Tidak pasti", "level": "tidak dikenal"})
+        return analysis
     
-    if scores[detected_lang] == 0:
-        detected_lang = "Indonesia"
+    if top_score == 0:
+        return {
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": (
+                "Tidak ada kosakata yang cocok dengan indikator Indonesia, Jawa, atau Madura "
+                "di kamus lokal. Sistem tidak lagi memaksa hasil ke Indonesia formal saat bukti tidak cukup."
+            ),
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": analyze_words(),
+        }
+
+    if top_score == runner_up and top_score <= 2:
+        return {
+            "language": "Tidak pasti",
+            "register": "ambigu",
+            "explanation": (
+                "Skor bahasa lokal seimbang, sehingga sistem tidak cukup yakin untuk memilih satu bahasa."
+            ),
+            "ngokoPercentage": 50.0,
+            "kramaPercentage": 50.0,
+            "wordAnalysis": analyze_words(),
+        }
         
     register = ""
     explanation = ""
@@ -671,14 +895,23 @@ def detect_language_and_register(text: str) -> dict:
         else:
             register = "formal"
             explanation = "Teks dideteksi sebagai Bahasa Indonesia formal karena menggunakan kosakata baku."
+        ngoko_pct = 0.0
+        krama_pct = 0.0
             
     elif detected_lang == "Jawa":
         has_ngoko_core = any(w in words for w in jv_ngoko_core)
         has_krama_core = any(w in words for w in jv_krama_core)
         has_inggil = any(w in words for w in jv_krama_inggil_verbs)
         krama_lugu_words = [w for w in words if w in jv_krama_lugu]
+        kasar_words = [w for w in words if w in jv_kasar]
         
-        if has_krama_core or "kula" in words:
+        if kasar_words:
+            register = "ngoko kasar"
+            explanation = (
+                "Teks dideteksi sebagai Jawa ragam kasar/informal karena memuat kata umpatan "
+                f"atau ekspresi sangat informal seperti: {', '.join(kasar_words)}."
+            )
+        elif has_krama_core or "kula" in words:
             if has_inggil:
                 register = "krama alus"
                 explanation = "Teks dideteksi sebagai Jawa Krama Alus (formal/sangat sopan) karena menggunakan kata ganti/partikel Krama serta verba penghormatan Krama Inggil."
@@ -702,6 +935,18 @@ def detect_language_and_register(text: str) -> dict:
             else:
                 register = "ngoko lugu"
                 explanation = "Teks dideteksi sebagai Jawa Ngoko Lugu."
+        if register.startswith("krama"):
+            ngoko_pct = 15.0
+            krama_pct = 85.0
+        elif register == "ngoko alus":
+            ngoko_pct = 55.0
+            krama_pct = 45.0
+        elif register == "ngoko kasar":
+            ngoko_pct = 98.0
+            krama_pct = 2.0
+        else:
+            ngoko_pct = 85.0
+            krama_pct = 15.0
                 
     elif detected_lang == "Madura":
         has_enja_iya = any(w in words for w in mad_enja_iya_core)
@@ -714,15 +959,24 @@ def detect_language_and_register(text: str) -> dict:
         if has_engghi_bhunten or engghi_bhunten_words:
             register = "Engghi-bhunten"
             explanation = "Teks dideteksi sebagai Madura Engghi-bhunten (tingkat tutur halus/formal)."
+            ngoko_pct = 15.0
+            krama_pct = 85.0
         elif has_engghi_enten or engghi_enten_words:
             register = "Engghi-enten"
             explanation = "Teks dideteksi sebagai Madura Engghi-enten (tingkat tutur menengah)."
+            ngoko_pct = 45.0
+            krama_pct = 55.0
         else:
             register = "Enja-Iya"
             explanation = "Teks dideteksi sebagai Madura Enja-Iya (tingkat tutur kasual sehari-hari)."
+            ngoko_pct = 85.0
+            krama_pct = 15.0
             
     return {
         "language": detected_lang,
         "register": register,
-        "explanation": explanation
+        "explanation": explanation,
+        "ngokoPercentage": ngoko_pct,
+        "kramaPercentage": krama_pct,
+        "wordAnalysis": analyze_words(),
     }

@@ -39,6 +39,9 @@ interface TranslationResult {
   kramaPercentage: number;
   context: string;
   alternativeText?: string;
+  translationProvider?: string;
+  apiConfidence?: number | null;
+  usedFallback?: boolean;
 }
 
 interface DocumentTranslationResult {
@@ -80,6 +83,26 @@ const LOCAL_PHRASES: Record<string, Record<string, { high: string; low: string; 
       high: 'Nami kula Ahmad, kula dalem ing Surabaya.',
       low: 'Jenengku Ahmad, aku manggon ing Surabaya.',
       context: 'Menyebut diri sendiri di tingkat Krama menggunakan kata "Nami" (nama) dan "Dalem/Manggen" (tinggal).'
+    },
+    'aku sedang di jalan': {
+      high: 'Kula wonten teng dalan',
+      low: 'Aku neng dalan',
+      context: 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+    },
+    'saya sedang di jalan': {
+      high: 'Kula wonten teng dalan',
+      low: 'Aku neng dalan',
+      context: 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+    },
+    'aku di jalan': {
+      high: 'Kula wonten teng dalan',
+      low: 'Aku neng dalan',
+      context: 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
+    },
+    'saya di jalan': {
+      high: 'Kula wonten teng dalan',
+      low: 'Aku neng dalan',
+      context: 'Frasa "di jalan" dibaca sebagai keterangan tempat, bukan verba "berjalan".'
     }
   },
   'id_mad': {
@@ -117,6 +140,7 @@ const ID_TO_JV_WORDS: Record<string, { high: string; low: string }> = {
   'dia': { high: 'piyambakipun', low: 'dheweke' },
   'ingin': { high: 'badhe', low: 'pengen' },
   'makan': { high: 'dhahar', low: 'mangan' },
+  'makanan': { high: 'dhaharan', low: 'panganan' },
   'nasi': { high: 'sekul', low: 'sego' },
   'minum': { high: 'ngunjuk', low: 'ngombe' },
   'tidur': { high: 'sare', low: 'turu' },
@@ -145,7 +169,12 @@ const ID_TO_JV_WORDS: Record<string, { high: string; low: string }> = {
   'dari': { high: 'saking', low: 'soko' },
   'dan': { high: 'kaliyan', low: 'lan' },
   'dengan': { high: 'kaliyan', low: 'karo' },
-  'bisa': { high: 'saged', low: 'iso' }
+  'bisa': { high: 'saged', low: 'iso' },
+  'cara': { high: 'cara', low: 'cara' },
+  'laku': { high: 'tindak', low: 'laku' },
+  'menjalankan': { high: 'nindakaken', low: 'nglakoni' },
+  'memperlakukan': { high: 'nindakaken', low: 'nglakoni' },
+  'perlakukan': { high: 'nindakaken', low: 'nglakoni' }
 };
 
 const ID_TO_MAD_WORDS: Record<string, { high: string; low: string }> = {
@@ -182,7 +211,8 @@ const ID_TO_MAD_WORDS: Record<string, { high: string; low: string }> = {
   'dari': { high: 'saking', low: 'dhari' },
   'dan': { high: 'sareng', low: 'ban' },
   'dengan': { high: 'sareng', low: 'ban' },
-  'bisa': { high: 'saged', low: 'bisa' }
+  'bisa': { high: 'saged', low: 'bisa' },
+  'cara': { high: 'cara', low: 'cara' }
 };
 
 const WOTD_WORDS = [
@@ -236,6 +266,10 @@ export default function HeritageGuardApp() {
   const [politenessAnalysis, setPolitenessAnalysis] = useState<{ ngoko: number; krama: number; summary: string }>({ ngoko: 0, krama: 0, summary: 'Belum ada analisis' });
   const [culturalContext, setCulturalContext] = useState('Masukkan teks untuk melihat konteks budaya.');
   const [suggestedVersion, setSuggestedVersion] = useState<string | null>(null);
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const [translationStatus, setTranslationStatus] = useState('Siap.');
+  const translationAbortRef = useRef<AbortController | null>(null);
+  const translationRequestIdRef = useRef(0);
 
   // --- DOCUMENT STATE ---
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -294,85 +328,147 @@ export default function HeritageGuardApp() {
     const clean = text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
     const words = clean.split(/\s+/);
     if (!words.length || words[0] === '') {
-      return { language: 'Indonesia', register: 'formal', explanation: 'Teks kosong.' };
+      return {
+        language: 'Tidak pasti',
+        register: 'tidak diketahui',
+        explanation: 'Teks kosong.',
+        ngokoPercentage: 0,
+        kramaPercentage: 0,
+        wordAnalysis: []
+      };
     }
 
     const jvNgokoCore = new Set(['aku', 'kowe', 'arep', 'ora', 'sing', 'opo', 'sopo', 'piye', 'kene', 'kono', 'neng', 'karo', 'lan', 'dadi']);
     const jvKramaCore = new Set(['kula', 'badhe', 'mboten', 'ingkang', 'punapa', 'sinten', 'kadospundi', 'mriki', 'mrika', 'dhateng', 'kaliyan', 'dados', 'panjenengan', 'sampeyan']);
     const jvInggilVerbs = new Set(['dhahar', 'sare', 'tindak', 'rawuh', 'sowan', 'kersa', 'nampi', 'jumeneng', 'dalem', 'sugeng']);
+    const jvKasar = new Set(['jancok', 'jancuk', 'dancok', 'cuk', 'asu', 'bajingan', 'raimu', 'ndasmu', 'matamu', 'picek']);
 
     const madEnjaIyaCore = new Set(["sengko'", "engko'", "ba'na", "ba'en", "enja'"]);
     const madEngghiEntenCore = new Set(["bula", "bula'", "dhika", "dhiko", "sampeyan"]);
     const madEngghiBhuntenCore = new Set(["kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"]);
+    const indoStandard = new Set(['saya', 'mau', 'makan', 'tidur', 'tidak', 'sudah', 'sedang', 'sangat', 'di', 'warung']);
+    const indoSlang = new Set(['gue', 'gua', 'lu', 'nggak', 'aja', 'udah', 'lagi', 'kenapa', 'banget', 'pengen', 'bobo', 'mager', 'bodo']);
 
     let jvScore = 0;
     let madScore = 0;
     let idScore = 0;
 
     words.forEach(w => {
-      if (jvNgokoCore.has(w) || jvKramaCore.has(w) || jvInggilVerbs.has(w)) jvScore++;
+      if (jvNgokoCore.has(w) || jvKramaCore.has(w) || jvInggilVerbs.has(w) || jvKasar.has(w)) jvScore++;
       if (madEnjaIyaCore.has(w) || madEngghiEntenCore.has(w) || madEngghiBhuntenCore.has(w)) madScore++;
-      if (['saya', 'mau', 'makan', 'tidur', 'tidak', 'sudah', 'sedang', 'sangat', 'di', 'warung'].includes(w)) idScore++;
+      if (indoStandard.has(w) || indoSlang.has(w)) idScore++;
     });
 
     if (words.some(w => ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe"].includes(w))) jvScore += 10;
     if (words.some(w => ["sèngko'", "sengko'", "kaula'", "bhâdhân", "bhadhan", "panjhenengngan", "dhika", "ba'na"].includes(w))) madScore += 10;
 
+    const wordAnalysis = words.map(word => {
+      if (jvKasar.has(word)) return { word, language: 'Jawa', level: 'ngoko kasar' };
+      if (jvKramaCore.has(word) || jvInggilVerbs.has(word)) return { word, language: 'Jawa', level: 'krama' };
+      if (jvNgokoCore.has(word)) return { word, language: 'Jawa', level: 'ngoko' };
+      if (madEngghiBhuntenCore.has(word)) return { word, language: 'Madura', level: 'engghi-bhunten' };
+      if (madEngghiEntenCore.has(word)) return { word, language: 'Madura', level: 'engghi-enten' };
+      if (madEnjaIyaCore.has(word)) return { word, language: 'Madura', level: 'enja-iya' };
+      if (indoSlang.has(word)) return { word, language: 'Indonesia', level: 'informal' };
+      if (indoStandard.has(word)) return { word, language: 'Indonesia', level: 'netral' };
+      return { word, language: 'Tidak pasti', level: 'tidak dikenal' };
+    });
+
     let lang = 'Indonesia';
     if (jvScore > idScore && jvScore >= madScore) lang = 'Jawa';
     else if (madScore > idScore && madScore >= jvScore) lang = 'Madura';
+    else if (idScore === 0 && jvScore === 0 && madScore === 0) {
+      return {
+        language: 'Tidak pasti',
+        register: 'tidak diketahui',
+        explanation: 'Tidak ada kosakata yang cocok dengan indikator lokal. Sistem tidak memaksa hasil ke Indonesia formal saat bukti tidak cukup.',
+        ngokoPercentage: 0,
+        kramaPercentage: 0,
+        wordAnalysis
+      };
+    }
 
     if (lang === 'Indonesia') {
-      const slangs = ['gue', 'gua', 'lu', 'nggak', 'aja', 'udah', 'lagi', 'kenapa', 'banget', 'pengen', 'bobo', 'mager', 'bodo'];
-      const matchedSlang = words.filter(w => slangs.includes(w));
+      const matchedSlang = words.filter(w => indoSlang.has(w));
       if (matchedSlang.length > 0) {
         return {
           language: 'Indonesia',
           register: 'informal',
-          explanation: `Teks dideteksi sebagai Bahasa Indonesia informal karena menggunakan kosakata gaul/slang: ${matchedSlang.join(', ')}.`
+          explanation: `Teks dideteksi sebagai Bahasa Indonesia informal karena menggunakan kosakata gaul/slang: ${matchedSlang.join(', ')}.`,
+          ngokoPercentage: 0,
+          kramaPercentage: 0,
+          wordAnalysis
         };
       }
       return {
         language: 'Indonesia',
         register: 'formal',
-        explanation: 'Teks menggunakan Bahasa Indonesia formal dengan kosakata baku.'
+        explanation: 'Teks menggunakan Bahasa Indonesia formal dengan kosakata baku.',
+        ngokoPercentage: 0,
+        kramaPercentage: 0,
+        wordAnalysis
       };
     } else if (lang === 'Jawa') {
       const hasNgokoCore = words.some(w => jvNgokoCore.has(w)) || words.includes('kowe') || words.includes('aku');
       const hasKramaCore = words.some(w => jvKramaCore.has(w)) || words.includes('kula');
       const hasInggil = words.some(w => jvInggilVerbs.has(w));
+      const kasarWords = words.filter(w => jvKasar.has(w));
 
-      if (hasKramaCore) {
+      if (kasarWords.length > 0) {
+        return {
+          language: 'Jawa',
+          register: 'ngoko kasar',
+          explanation: `Teks memuat ekspresi Jawa sangat informal/kasar: ${kasarWords.join(', ')}.`,
+          ngokoPercentage: 98,
+          kramaPercentage: 2,
+          wordAnalysis
+        };
+      } else if (hasKramaCore) {
         if (hasInggil) {
           return {
             language: 'Jawa',
             register: 'krama alus',
-            explanation: 'Teks menggunakan ragam Jawa Krama Alus (formal/sangat sopan) karena menggunakan kata ganti/partikel Krama serta verba penghormatan Krama Inggil.'
+            explanation: 'Teks menggunakan ragam Jawa Krama Alus (formal/sangat sopan) karena menggunakan kata ganti/partikel Krama serta verba penghormatan Krama Inggil.',
+            ngokoPercentage: 15,
+            kramaPercentage: 85,
+            wordAnalysis
           };
         }
         return {
           language: 'Jawa',
           register: 'krama lugu',
-          explanation: 'Teks menggunakan ragam Jawa Krama Lugu (formal/menengah) karena menggunakan kosakata Krama Lugu tanpa campuran verba Krama Inggil.'
+          explanation: 'Teks menggunakan ragam Jawa Krama Lugu (formal/menengah) karena menggunakan kosakata Krama Lugu tanpa campuran verba Krama Inggil.',
+          ngokoPercentage: 20,
+          kramaPercentage: 80,
+          wordAnalysis
         };
       } else if (hasNgokoCore) {
         if (hasInggil) {
           return {
             language: 'Jawa',
             register: 'ngoko alus',
-            explanation: 'Teks menggunakan ragam Jawa Ngoko Alus karena memadukan kerangka kata Ngoko dengan kata penghormatan Krama Inggil untuk menghormati mitra tutur.'
+            explanation: 'Teks menggunakan ragam Jawa Ngoko Alus karena memadukan kerangka kata Ngoko dengan kata penghormatan Krama Inggil untuk menghormati mitra tutur.',
+            ngokoPercentage: 55,
+            kramaPercentage: 45,
+            wordAnalysis
           };
         }
         return {
           language: 'Jawa',
           register: 'ngoko lugu',
-          explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu (kasual sehari-hari) dengan kosakata informal.'
+          explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu (kasual sehari-hari) dengan kosakata informal.',
+          ngokoPercentage: 85,
+          kramaPercentage: 15,
+          wordAnalysis
         };
       }
       return {
         language: 'Jawa',
         register: 'ngoko lugu',
-        explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu.'
+        explanation: 'Teks menggunakan ragam Jawa Ngoko Lugu.',
+        ngokoPercentage: 85,
+        kramaPercentage: 15,
+        wordAnalysis
       };
     } else {
       const hasEnjaIya = words.some(w => madEnjaIyaCore.has(w));
@@ -383,13 +479,19 @@ export default function HeritageGuardApp() {
         return {
           language: 'Madura',
           register: 'Engghi-bhunten',
-          explanation: 'Teks menggunakan ragam Madura Engghi-bhunten (tingkat tutur halus/formal).'
+          explanation: 'Teks menggunakan ragam Madura Engghi-bhunten (tingkat tutur halus/formal).',
+          ngokoPercentage: 15,
+          kramaPercentage: 85,
+          wordAnalysis
         };
       } else if (hasEngghiEnten) {
         return {
           language: 'Madura',
           register: 'Engghi-enten',
-          explanation: 'Teks menggunakan ragam Madura Engghi-enten (tingkat tutur menengah).'
+          explanation: 'Teks menggunakan ragam Madura Engghi-enten (tingkat tutur menengah).',
+          ngokoPercentage: 45,
+          kramaPercentage: 55,
+          wordAnalysis
         };
       }
       return {
@@ -397,7 +499,10 @@ export default function HeritageGuardApp() {
         register: 'Enja-Iya',
         explanation: hasEnjaIya
           ? 'Teks menggunakan ragam Madura Enja-Iya (tingkat tutur kasual sehari-hari).'
-          : 'Teks cenderung menggunakan ragam Madura Enja-Iya berdasarkan kosakata yang tersedia.'
+          : 'Teks cenderung menggunakan ragam Madura Enja-Iya berdasarkan kosakata yang tersedia.',
+        ngokoPercentage: 85,
+        kramaPercentage: 15,
+        wordAnalysis
       };
     }
   };
@@ -517,18 +622,93 @@ export default function HeritageGuardApp() {
     // 2. Word-by-word Translation
     const dict = target === 'jv' ? ID_TO_JV_WORDS : ID_TO_MAD_WORDS;
     const words = text.split(/\s+/);
-    const translated = words.map(word => {
-      const cleanW = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
-      const punctuation = word.slice(cleanW.length);
+    const altLevel = level === 'high' ? 'low' : 'high';
+    const applyCase = (source: string, replacement: string) =>
+      source[0] === source[0]?.toUpperCase()
+        ? replacement.charAt(0).toUpperCase() + replacement.slice(1)
+        : replacement;
+    const dedupeBeforeSuffix = (token: string, suffix: string) => {
+      if (!token.endsWith(suffix)) return null;
+      const stem = token.slice(0, -suffix.length);
+      return stem.length >= 2 && stem[stem.length - 1] === stem[stem.length - 2]
+        ? `${stem.slice(0, -1)}${suffix}`
+        : null;
+    };
+    const jvPossessive = (value: string, selectedLevel: 'low' | 'high') => {
+      if (selectedLevel === 'high') return `${value}${/[aiueo]$/i.test(value) ? 'nipun' : 'ipun'}`;
+      return `${value}${/[aiueo]$/i.test(value) ? 'ne' : 'e'}`;
+    };
+    const jvCausative = (value: string, selectedLevel: 'low' | 'high') => {
+      if (selectedLevel === 'high') return `${value}aken`;
+      return value.endsWith('u') ? `${value.slice(0, -1)}okno` : `${value}no`;
+    };
+    const jvPassive = (baseToken: string, value: string, selectedLevel: 'low' | 'high') => {
+      if (baseToken === 'makan') return selectedLevel === 'high' ? 'dipundhahar' : 'dipangan';
+      return selectedLevel === 'high' ? `dipun${value}` : `di${value}`;
+    };
+    const jvLocativeCompound = (token: string, selectedLevel: 'low' | 'high') => {
+      if (!token.startsWith('di')) return null;
+      const base = token.slice(2);
+      if (base !== 'jalan') return null;
+      return selectedLevel === 'high' ? 'wonten margi' : 'neng dalan';
+    };
+    const translateCore = (core: string, selectedLevel: 'low' | 'high'): string | null => {
+      const candidates = [core];
+      ['nya', 'kan', 'kannya'].forEach(suffix => {
+        const normalized = dedupeBeforeSuffix(core, suffix);
+        if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
+      });
 
-      if (dict[cleanW]) {
-        let replacement = level === 'high' ? dict[cleanW].high : dict[cleanW].low;
-        if (word[0] === word[0].toUpperCase()) {
-          replacement = replacement.charAt(0).toUpperCase() + replacement.slice(1);
+      for (const candidate of candidates) {
+        if (dict[candidate]) return dict[candidate][selectedLevel];
+        if (target !== 'jv') continue;
+
+        if (candidate.includes('-')) {
+          const parts = candidate.split('-');
+          if (parts.length === 2 && parts[0] === parts[1] && parts[0]) {
+            const repeated = translateCore(parts[0], selectedLevel);
+            if (repeated) return `${repeated}-${repeated}`;
+          }
         }
-        return replacement + punctuation;
+
+        const locative = jvLocativeCompound(candidate, selectedLevel);
+        if (locative) return locative;
+
+        if (candidate.startsWith('di') && candidate.length > 2) {
+          const base = candidate.slice(2);
+          const translatedBase = translateCore(base, selectedLevel);
+          if (translatedBase) return jvPassive(base, translatedBase, selectedLevel);
+        }
+
+        if (candidate.endsWith('nya') && candidate.length > 3) {
+          const base = translateCore(candidate.slice(0, -3), selectedLevel);
+          if (base) return jvPossessive(base, selectedLevel);
+        }
+
+        if (candidate.endsWith('kan') && candidate.length > 3) {
+          const derived = [`men${candidate}`, `me${candidate}`].find(item => dict[item]);
+          if (derived) return dict[derived][selectedLevel];
+
+          const base = candidate.slice(0, -3);
+          if (dict[base]) return jvCausative(dict[base][selectedLevel], selectedLevel);
+        }
+
+        if (candidate.startsWith('memper') && candidate.endsWith('kan')) {
+          const base = candidate.slice(6, -3);
+          if (dict[base]) return jvCausative(dict[base][selectedLevel], selectedLevel);
+        }
       }
-      return word;
+      return null;
+    };
+    const translateToken = (word: string, selectedLevel: 'low' | 'high') => {
+      const match = word.match(/^([^\w']*)([\w'\-̀-ỹ]+)([^\w']*)$/u);
+      if (!match) return word;
+      const [, prefix, core, suffix] = match;
+      const translatedCore = translateCore(core.toLowerCase(), selectedLevel);
+      return translatedCore ? `${prefix}${applyCase(core, translatedCore)}${suffix}` : word;
+    };
+    const translated = words.map(word => {
+      return translateToken(word, level);
     });
 
     const isHigh = level === 'high';
@@ -548,17 +728,7 @@ export default function HeritageGuardApp() {
 
     // Get alternatives
     const altTranslated = words.map(word => {
-      const cleanW = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
-      const punctuation = word.slice(cleanW.length);
-
-      if (dict[cleanW]) {
-        let replacement = level === 'high' ? dict[cleanW].low : dict[cleanW].high;
-        if (word[0] === word[0].toUpperCase()) {
-          replacement = replacement.charAt(0).toUpperCase() + replacement.slice(1);
-        }
-        return replacement + punctuation;
-      }
-      return word;
+      return translateToken(word, altLevel);
     }).join(' ');
 
     return {
@@ -571,31 +741,48 @@ export default function HeritageGuardApp() {
     };
   }, []);
 
-  // Text Translation Trigger
+  // Live text translation uses the backend API first; local translation is a silent fallback.
   const handleTranslate = useCallback(async (textVal: string) => {
     if (!textVal.trim()) {
+      translationAbortRef.current?.abort();
+      translationRequestIdRef.current += 1;
+      setTranslationLoading(false);
       setTranslatedText('');
       setPolitenessAnalysis({ ngoko: 0, krama: 0, summary: 'Belum ada analisis' });
       setCulturalContext('Masukkan teks untuk melihat konteks budaya.');
       setSuggestedVersion(null);
+      setTranslationStatus('Siap.');
       return;
     }
 
+    translationAbortRef.current?.abort();
+    const controller = new AbortController();
+    translationAbortRef.current = controller;
+    const requestId = translationRequestIdRef.current + 1;
+    translationRequestIdRef.current = requestId;
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+
+    setTranslationLoading(true);
+    setTranslationStatus('Menerjemahkan...');
+
     try {
-      // API call to FastAPI backend
       const response = await fetch(`${API_BASE_URL}/api/translate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           text: textVal,
           source_lang: sourceLang,
           target_lang: targetLang,
-          level: targetLevel
+          level: targetLevel,
+          use_ai: true
         })
       });
 
+      if (requestId !== translationRequestIdRef.current) return;
+
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as TranslationResult;
         setTranslatedText(data.translatedText);
         setPolitenessAnalysis({
           ngoko: data.ngokoPercentage,
@@ -604,26 +791,44 @@ export default function HeritageGuardApp() {
         });
         setCulturalContext(data.context);
         setSuggestedVersion(data.alternativeText || null);
+        const providerLabel = data.translationProvider === 'gemini'
+          ? 'Gemini'
+          : data.translationProvider === 'google_translate'
+            ? 'Google Translate'
+            : data.translationProvider === 'cache'
+              ? 'cache API'
+              : 'fallback lokal';
+        setTranslationStatus(data.usedFallback
+          ? 'Hasil fallback lokal.'
+          : `Terjemahan konteks via ${providerLabel}.`);
       } else {
-        throw new Error('API server returned error');
+        throw new Error('Server translation failed');
       }
     } catch {
-      // Offline fallback
+      if (requestId !== translationRequestIdRef.current) return;
       const offlineResult = performOfflineTranslation(textVal, sourceLang, targetLang, targetLevel);
       setTranslatedText(offlineResult.translatedText);
       setPolitenessAnalysis({
         ngoko: offlineResult.ngokoPercentage,
         krama: offlineResult.kramaPercentage,
-        summary: `Tingkat tutur terdeteksi: ${offlineResult.politenessLevel} (Offline Mode)`
+        summary: `Tingkat tutur terdeteksi: ${offlineResult.politenessLevel}`
       });
       setCulturalContext(offlineResult.context);
       setSuggestedVersion(offlineResult.alternativeText || null);
+      setTranslationStatus('Hasil fallback lokal.');
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (requestId === translationRequestIdRef.current) {
+        setTranslationLoading(false);
+      }
     }
   }, [
     sourceLang,
     targetLang,
     targetLevel,
     performOfflineTranslation,
+    setTranslationLoading,
+    setTranslationStatus,
     setTranslatedText,
     setPolitenessAnalysis,
     setCulturalContext,
@@ -634,7 +839,7 @@ export default function HeritageGuardApp() {
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
       handleTranslate(inputText);
-    }, 300);
+    }, 650);
     return () => clearTimeout(delayDebounce);
   }, [inputText, handleTranslate]);
 
@@ -806,7 +1011,7 @@ export default function HeritageGuardApp() {
   };
 
   return (
-    <div className="flex flex-col min-height-screen bg-bg-cream text-text-dark font-sans relative antialiased">
+    <div className="flex flex-col min-h-screen text-text-dark font-sans relative antialiased">
 
       {/* Navigation Bar */}
       <nav className="sticky top-0 z-50 bg-bg-cream/90 backdrop-blur-md border-b border-border-color px-6 py-4 flex justify-between items-center smooth-transition">
@@ -879,7 +1084,7 @@ export default function HeritageGuardApp() {
             <button onClick={toggleTheme} className="flex items-center justify-center gap-2 border border-border-color py-2.5 rounded-lg text-text-medium font-semibold text-sm w-full cursor-pointer smooth-transition hover:bg-neutral-light">
               {theme === 'light' ? <><Moon size={16} /> Mode Gelap</> : <><Sun size={16} /> Mode Terang</>}
             </button>
-            <button className="bg-primary text-white dark:text-neutral-950 font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
+            <button className="bg-primary text-white font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
               Mulai Sekarang
             </button>
           </div>
@@ -1050,7 +1255,7 @@ export default function HeritageGuardApp() {
                 </div>
 
                 {/* Target Output Panel */}
-                <div className="flex flex-col min-h-[350px] relative">
+                <div className="flex flex-col min-h-[350px] relative" aria-busy={translationLoading}>
 
                   {/* Language swap button (Floating in middle for large screens) */}
                   <button className="absolute -left-5 top-3 z-10 w-9 h-9 bg-white border border-border-color rounded-full shadow-md flex items-center justify-center text-accent-brown hover:bg-primary hover:text-white dark:hover:text-neutral-950 cursor-pointer smooth-transition hidden md:flex" onClick={handleSwapLanguages} title="Tukar bahasa">
@@ -1068,10 +1273,10 @@ export default function HeritageGuardApp() {
                       {/* Politeness levels for regional output */}
                       {targetLang !== 'id' && (
                         <div className="flex bg-white border border-border-color p-0.5 rounded-md text-xs font-semibold">
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
                             {targetLang === 'jv' ? 'Ngoko' : 'Enja-Iya'}
                           </button>
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
                             {targetLang === 'jv' ? 'Krama' : 'Engghi-Bh'}
                           </button>
                         </div>
@@ -1085,8 +1290,11 @@ export default function HeritageGuardApp() {
                       <div className="text-text-muted text-base italic">Hasil terjemahan akan muncul di sini...</div>
                     )}
                   </div>
-                  <div className="bg-neutral-light/35 border-t border-border-color px-5 py-3 flex justify-end items-center">
-                    <div className="flex gap-2">
+                  <div className="bg-neutral-light/35 border-t border-border-color px-5 py-3 flex justify-between items-center gap-3">
+                    <span className="text-[11px] text-text-muted font-medium truncate min-w-0">
+                      {translationStatus}
+                    </span>
+                    <div className="flex gap-2 shrink-0">
                       <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => speakText(translatedText)} title="Dengarkan terjemahan">
                         <Volume2 size={16} />
                       </button>
@@ -1113,6 +1321,31 @@ export default function HeritageGuardApp() {
                     <p className="text-xs font-semibold text-primary italic">&quot;{suggestedVersion}&quot;</p>
                   </div>
                 )}
+              </div>
+
+              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md">
+                <h4 className="font-heading font-bold text-sm text-primary mb-3">Kesopanan</h4>
+                <p className="text-xs text-text-medium mb-4">{politenessAnalysis.summary}</p>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-[11px] font-semibold mb-1">
+                      <span className="text-orange-600">Kasual</span>
+                      <span>{politenessAnalysis.ngoko}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-neutral-light overflow-hidden">
+                      <div className="h-full bg-orange-500 smooth-transition" style={{ width: `${politenessAnalysis.ngoko}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[11px] font-semibold mb-1">
+                      <span className="text-blue-600">Sopan</span>
+                      <span>{politenessAnalysis.krama}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-neutral-light overflow-hidden">
+                      <div className="h-full bg-blue-500 smooth-transition" style={{ width: `${politenessAnalysis.krama}%` }} />
+                    </div>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -1301,10 +1534,10 @@ export default function HeritageGuardApp() {
                   <div className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-text-medium">Ragam target</span>
                     <div className="flex bg-bg-cream border border-border-color p-0.5 rounded-md text-xs font-semibold min-h-9">
-                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'low' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('low')} disabled={docTargetLang === 'id'}>
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'low' ? 'bg-primary text-white' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('low')} disabled={docTargetLang === 'id'}>
                         {docTargetLang === 'mad' ? 'Enja-Iya' : 'Ngoko'}
                       </button>
-                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'high' ? 'bg-primary text-white dark:text-neutral-950' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('high')} disabled={docTargetLang === 'id'}>
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'high' ? 'bg-primary text-white' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('high')} disabled={docTargetLang === 'id'}>
                         {docTargetLang === 'mad' ? 'Engghi' : 'Krama'}
                       </button>
                     </div>

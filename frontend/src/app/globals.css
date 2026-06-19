@@ -73,6 +73,11 @@
 }
 
 /* Custom Base Styles */
+
+html {
+  background: linear-gradient(to bottom, var(--color-bg-cream) 0%, var(--color-bg-cream) 50vh, var(--color-primary) 50vh, var(--color-primary) 100%) fixed;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-bg-cream);
@@ -84,7 +89,7 @@ body {
 
 body::before {
   content: "";
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;

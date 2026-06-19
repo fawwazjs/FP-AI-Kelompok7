@@ -62,6 +62,8 @@ class TranslationPipelineTests(unittest.TestCase):
             ("Kula badhe dhahar sekul.", "Jawa", "krama alus"),
             ("Sengko' terro ngakan nase'.", "Madura", "Enja-Iya"),
             ("Panjhenengngan badhi alomampaha ka dhimma?", "Madura", "Engghi-bhunten"),
+            ("Jancok", "Jawa", "ngoko kasar"),
+            ("qwertyxyz", "Tidak pasti", "tidak diketahui"),
         ]
 
         for text, language, register in cases:
@@ -69,6 +71,23 @@ class TranslationPipelineTests(unittest.TestCase):
                 result = detect_language_and_register(text)
                 self.assertEqual(result["language"], language)
                 self.assertEqual(result["register"], register)
+
+    def test_indonesian_affix_translation_to_javanese(self):
+        text = "cara caranya memperlakukannya baikknya jalan jalankan dijalan"
+        result = translate_and_classify(text, "id", "jv", "high")
+
+        translated = result["translatedText"]
+        self.assertIn("cara", translated)
+        self.assertIn("caranipun", translated)
+        self.assertIn("nindakakenipun", translated)
+        self.assertIn("saenipun", translated)
+        self.assertIn("mlampah", translated)
+        self.assertIn("nindakaken", translated)
+        self.assertIn("wonten margi", translated)
+
+    def test_indonesian_location_phrase_to_javanese(self):
+        result = translate_and_classify("Aku sedang di jalan", "id", "jv", "high")
+        self.assertEqual(result["translatedText"], "Kula wonten teng dalan")
 
     def test_txt_document_translation_contains_actual_text(self):
         with tempfile.TemporaryDirectory() as temp_dir:

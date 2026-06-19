@@ -27,7 +27,7 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 * **Backend**: FastAPI (Python 3.12+, Uvicorn Server)
 * **Database**: SQLite (via SQLAlchemy ORM)
 * **Pemrosesan Dokumen**: PyMuPDF (untuk PDF) & python-docx (untuk DOCX)
-* **AI / LLM**: Google Gemini API (terjemahan fallback + chatbot multilingual)
+* **AI / LLM**: Google Gemini API (terjemahan konteks + chatbot multilingual)
 
 ---
 
@@ -48,23 +48,41 @@ FP-AI-Kelompok7/
 
 HeritageGuard menggunakan **Google Gemini API** untuk dua kapabilitas AI:
 
-### 1. Fallback Terjemahan Cerdas
-Ketika kalimat input mengandung kata-kata di luar kamus lokal (rule-based tidak bisa menerjemahkan dengan baik), sistem otomatis memanggil Gemini untuk menghasilkan terjemahan lengkap dengan tingkat tutur yang sesuai.
+### 1. Terjemahan Cerdas
+Penerjemah teks otomatis memakai provider API terlebih dahulu agar terjemahan memperhatikan konteks kalimat utuh, imbuhan, reduplikasi, idiom, dan tingkat tutur target. Jika Gemini atau provider API tidak tersedia, sistem langsung memakai fallback kamus lokal tanpa menampilkan error ke pengguna.
 
-Alur: `Input → Rule-based (kamus lokal) → Jika coverage rendah → Gemini AI`
+Alur: `Input → Gemini structured translation → Gemini plain fallback → Google Translate opsional → Rule-based lokal`
 
 ### 2. Chatbot Multilingual
 Fitur chatbot yang bisa diajak berbicara dalam Bahasa Indonesia, Jawa (Ngoko & Krama), dan Madura (Enja-Iya & Engghi-Bhanten). Chatbot memahami konteks budaya dan bisa membantu pengguna belajar bahasa daerah.
 
 ### Konfigurasi
-Set environment variable `GEMINI_API_KEYS` (pisahkan dengan koma untuk rotasi multi-key):
+Set salah satu environment variable berikut sebelum menjalankan backend:
 ```bash
+# Satu key
+export GEMINI_API_KEY="key_anda"
+
+# Atau beberapa key, pisahkan dengan koma
 export GEMINI_API_KEYS="key1,key2,key3"
+
 uvicorn backend.main:app --port 8000 --reload
 ```
-Sistem akan merotasi key secara round-robin. Jika satu key kena rate-limit (429), otomatis pindah ke key berikutnya.
+Jalankan `export` di terminal yang sama dengan `uvicorn`, lalu restart backend.
 
-> Tanpa API key, backend tetap berfungsi (fitur terjemahan rule-based aktif, chatbot mengembalikan error 503).
+Alternatif lokal: buat file `.env` di root proyek (file ini sudah masuk `.gitignore`):
+```bash
+GEMINI_API_KEY=key_anda
+
+# Opsional: fallback Google Translate untuk pasangan bahasa yang didukung
+GOOGLE_TRANSLATE_API_KEY=key_google_translate
+
+# Opsional: gunakan Translation LLM Cloud Translation Basic
+# GOOGLE_TRANSLATE_MODEL=projects/PROJECT_ID/locations/REGION_NAME/models/general/translation-llm
+```
+
+Cek status konfigurasi dengan `GET /api/gemini-status`.
+
+> Tanpa API key, backend tetap berfungsi dengan fallback kamus/rule lokal. Chatbot tetap membutuhkan `GEMINI_API_KEY` atau `GEMINI_API_KEYS`.
 
 ---
 

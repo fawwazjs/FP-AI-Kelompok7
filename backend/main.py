@@ -30,7 +30,7 @@ from .document_service import (
     process_and_translate_doc,
     process_and_translate_txt,
 )
-from .gemini_service import translate_with_gemini, chat_with_gemini, detect_with_gemini
+from .gemini_service import chat_with_gemini, detect_with_gemini, get_gemini_status, translate_with_context_api
 from .rag_service import get_stats as rag_get_stats, is_available as rag_is_available
 
 app = FastAPI(title="HeritageGuard Core API", description="AI Preservasi Bahasa Jawa & Madura")
@@ -76,6 +76,7 @@ class TranslationRequest(BaseModel):
     source_lang: str
     target_lang: str
     level: str  # 'low' or 'high'
+    use_ai: bool = True
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'assistant'
@@ -120,6 +121,10 @@ def health_check():
         "version": "2.0.0",
         "rag": "ready" if rag_is_available() else "unavailable",
     }
+
+@app.get("/api/gemini-status")
+def gemini_status():
+    return get_gemini_status()
 
 def _redacted_marker(text: str) -> str:
     digest = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:12]
@@ -221,13 +226,13 @@ def detect_register(req: DetectionRequest):
     if len(req.text) > MAX_TEXT_CHARS:
         raise HTTPException(status_code=413, detail="Text too long")
 
-    # Gemini + RAG first
-    gemini_result = detect_with_gemini(req.text)
-    if gemini_result:
-        return gemini_result
+    local_result = detect_language_and_register(req.text)
+    if local_result.get("language") != "Tidak pasti":
+        return local_result
 
-    # Fallback to rule-based if Gemini unavailable
-    return detect_language_and_register(req.text)
+    # Gemini is only used for uncertain local cases so normal detection stays fast.
+    gemini_result = detect_with_gemini(req.text)
+    return gemini_result or local_result
 
 @app.post("/api/translate")
 def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
@@ -237,26 +242,44 @@ def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=413, detail="Text too long")
     _validate_language(req.source_lang, req.target_lang, req.level)
 
-    # Rule-based first (instant response)
+    # Local rule-based result is kept as the guaranteed fallback.
     result = translate_and_classify(req.text, req.source_lang, req.target_lang, req.level)
+    result["translationProvider"] = "local_fallback"
+    result["apiConfidence"] = None
+    result["usedFallback"] = True
 
-    # Gemini fallback: only if rule-based has low coverage (>60% words unchanged)
-    if req.source_lang != req.target_lang:
-        translated = result["translatedText"]
-        source_words = set(re.sub(r"[^\w\s]", "", req.text.lower()).split())
-        translated_words = set(re.sub(r"[^\w\s]", "", translated.lower()).split())
-        overlap = source_words & translated_words
-        coverage_ratio = len(overlap) / max(len(source_words), 1)
-        if coverage_ratio > 0.6 and len(source_words) > 2:
-            gemini_translation = translate_with_gemini(
-                req.text, req.source_lang, req.target_lang, req.level
-            )
-            if gemini_translation and gemini_translation.strip():
-                result["translatedText"] = gemini_translation
-                result["context"] = (
-                    "Terjemahan dihasilkan oleh Gemini AI + RAG karena kosakata di luar jangkauan kamus lokal. "
-                    + result.get("context", "")
-                )
+    # API-first translation: Gemini uses sentence-level context and register
+    # instructions; Google Translate is optional fallback for supported pairs.
+    if req.use_ai and req.source_lang != req.target_lang:
+        api_translation = translate_with_context_api(
+            req.text, req.source_lang, req.target_lang, req.level
+        )
+        if api_translation and api_translation.get("translatedText"):
+            provider = api_translation.get("provider", "api")
+            provider_label = {
+                "gemini": "Gemini AI",
+                "google_translate": "Google Translate",
+                "cache": "cache API",
+            }.get(provider, "API")
+            result["translatedText"] = api_translation["translatedText"]
+            result["translationProvider"] = provider
+            result["apiConfidence"] = api_translation.get("confidence")
+            result["usedFallback"] = False
+            result["context"] = (
+                f"Terjemahan dihasilkan oleh {provider_label} dengan pendekatan konteks kalimat utuh. "
+                f"{api_translation.get('notes', '')} "
+                f"{result.get('context', '')}"
+            ).strip()
+        else:
+            result["context"] = (
+                "Hasil berasal dari fallback kamus lokal. "
+                + result.get("context", "")
+            ).strip()
+    elif req.source_lang != req.target_lang:
+        result["context"] = (
+            "Mode lokal aktif; hasil berasal dari fallback kamus/rule lokal. "
+            + result.get("context", "")
+        ).strip()
 
     # Save privacy-preserving operational log in SQLite.
     log = TranslationLog(
@@ -412,7 +435,10 @@ def chatbot(req: ChatRequest):
     if response is None:
         raise HTTPException(
             status_code=503,
-            detail="Chatbot sedang tidak tersedia. Pastikan GEMINI_API_KEY sudah dikonfigurasi."
+            detail=(
+                "Chatbot sedang tidak tersedia. Set GEMINI_API_KEY untuk satu key "
+                "atau GEMINI_API_KEYS untuk beberapa key, lalu restart backend."
+            )
         )
 
     return {
