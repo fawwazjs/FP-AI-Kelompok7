@@ -731,18 +731,18 @@ jv_kasar = {"jancok", "jancuk", "dancok", "cuk", "asu", "bajingan", "raimu", "nd
 indo_standard = {"saya", "mau", "makan", "tidur", "anda", "kamu", "tidak", "saja", "sudah", "sedang", "mengapa", "sangat", "pergi", "di", "warung", "dekat", "keraton"}
 indo_slang = {"gue", "gua", "lu", "nggak", "aja", "udah", "lagi", "kenapa", "banget", "pengen", "bobo", "mager", "bodo", "yuk", "bro", "selow", "dong", "capek", "pusing"}
 
-mad_enja_iya = {"sengko'", "ba'na", "ngakan", "tedhung", "entar", "roma", "molea", "ngakana", "enja'"}
+mad_enja_iya = {"sengko'", "ba'na", "terro", "ngakan", "ngakana", "nase", "nase'", "tedhung", "entar", "entarra", "roma", "molea", "enja'"}
 mad_engghi_enten = {"bula", "dhika", "bisaa", "abhanto"}
-mad_engghi_bhunten = {"bhiula", "panjhenengngan", "neddha", "asera", "alomampah", "engghi", "bhanten", "kaula'", "bhâdhân", "dada"}
+mad_engghi_bhunten = {"bhiula", "panjhenengngan", "badhi", "neddha", "neddha'a", "asera", "alomampah", "alomampaha", "engghi", "bhanten", "kaula'", "bhâdhân", "dada"}
 
 # Core indicators for speech level routing
 jv_ngoko_core = {'aku', 'kowe', 'arep', 'ora', 'sing', 'opo', 'sopo', 'piye', 'kene', 'kono', 'neng', 'karo', 'lan', 'dadi'}
 jv_krama_core = {'kula', 'badhe', 'mboten', 'ingkang', 'punapa', 'sinten', 'kadospundi', 'mriki', 'mrika', 'dhateng', 'kaliyan', 'dados', 'panjenengan', 'sampeyan'}
 jv_krama_inggil_verbs = {'dhahar', 'sare', 'tindak', 'rawuh', 'sowan', 'kersa', 'nampi', 'jumeneng', 'dalem', 'sugeng'}
 
-mad_enja_iya_core = {"sengko'", "engko'", "ba'na", "ba'en", "enja'"}
-mad_engghi_enten_core = {"bula", "bula'", "dhika", "dhiko", "sampeyan"}
-mad_engghi_bhunten_core = {"kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"}
+mad_enja_iya_core = {"sengko'", "engko'", "ba'na", "ba'en", "terro", "ngakan", "ngakana", "nase", "nase'", "enja'"}
+mad_engghi_enten_core = {"bula", "bula'", "dhika", "dhiko", "ka", "dhimma", "sampeyan"}
+mad_engghi_bhunten_core = {"kaula", "kaula'", "bhâdhân", "panjhenengngan", "badhi", "alomampah", "alomampaha", "engghi", "bhanten", "bhunten", "ajunan", "srèra"}
 
 # Lazily populate them from Dataset files if they exist
 json_path = _dataset_path('Dataset', 'ngoko_krama.json')
@@ -819,25 +819,12 @@ def detect_language_and_register(text: str) -> dict:
             "wordAnalysis": [],
         }
         
-    indo_score = sum(1 for w in words if w in indo_standard or w in indo_slang)
-    jawa_score = sum(1 for w in words if w in jv_ngoko or w in jv_krama_lugu or w in jv_krama_alus or w in jv_kasar)
-    mad_score = sum(1 for w in words if w in mad_enja_iya or w in mad_engghi_enten or w in mad_engghi_bhunten)
-    
-    if any(w in words for w in ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe", "inggih", "mboten"]):
-        jawa_score += 10
-    if any(w in words for w in ["sèngko'", "sengko'", "kaula'", "bhâdhân", "bhadhan", "panjhenengngan", "dhika", "ba'na", "terro"]):
-        mad_score += 10
-        
-    scores = {"Indonesia": indo_score, "Jawa": jawa_score, "Madura": mad_score}
-    detected_lang = max(scores, key=scores.get)
-    sorted_scores = sorted(scores.values(), reverse=True)
-    top_score = sorted_scores[0]
-    runner_up = sorted_scores[1]
-
     def analyze_words() -> list[dict]:
         analysis = []
         for word in words:
-            if word in jv_kasar:
+            if len(word) <= 1:
+                analysis.append({"word": word, "language": "Tidak pasti", "level": "tidak dikenal"})
+            elif word in jv_kasar:
                 analysis.append({"word": word, "language": "Jawa", "level": "ngoko kasar"})
             elif word in jv_krama_alus or word in jv_krama_core or word in jv_krama_inggil_verbs:
                 analysis.append({"word": word, "language": "Jawa", "level": "krama"})
@@ -858,6 +845,19 @@ def detect_language_and_register(text: str) -> dict:
             else:
                 analysis.append({"word": word, "language": "Tidak pasti", "level": "tidak dikenal"})
         return analysis
+
+    word_analysis = analyze_words()
+    language_counts = {"Indonesia": 0, "Jawa": 0, "Madura": 0}
+    for item in word_analysis:
+        language = item["language"]
+        if language in language_counts:
+            language_counts[language] += 1
+
+    total_words = len(words)
+    top_score = max(language_counts.values())
+    top_languages = [language for language, count in language_counts.items() if count == top_score]
+    top_percentage = round((top_score / total_words) * 100, 1) if total_words else 0.0
+    min_language_percentage = 50.0
     
     if top_score == 0:
         return {
@@ -869,20 +869,35 @@ def detect_language_and_register(text: str) -> dict:
             ),
             "ngokoPercentage": 0.0,
             "kramaPercentage": 0.0,
-            "wordAnalysis": analyze_words(),
+            "wordAnalysis": word_analysis,
         }
 
-    if top_score == runner_up and top_score <= 2:
+    if len(top_languages) > 1:
         return {
             "language": "Tidak pasti",
             "register": "ambigu",
             "explanation": (
-                "Skor bahasa lokal seimbang, sehingga sistem tidak cukup yakin untuk memilih satu bahasa."
+                "Persentase indikator bahasa seimbang, sehingga sistem tidak cukup yakin untuk memilih satu bahasa."
             ),
             "ngokoPercentage": 50.0,
             "kramaPercentage": 50.0,
-            "wordAnalysis": analyze_words(),
+            "wordAnalysis": word_analysis,
         }
+
+    if top_percentage < min_language_percentage:
+        return {
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": (
+                f"Hanya {top_percentage}% token yang cocok dengan indikator {top_languages[0]}; "
+                "bukti belum cukup untuk menetapkan bahasa keseluruhan."
+            ),
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": word_analysis,
+        }
+
+    detected_lang = top_languages[0]
         
     register = ""
     explanation = ""
@@ -978,5 +993,5 @@ def detect_language_and_register(text: str) -> dict:
         "explanation": explanation,
         "ngokoPercentage": ngoko_pct,
         "kramaPercentage": krama_pct,
-        "wordAnalysis": analyze_words(),
+        "wordAnalysis": word_analysis,
     }

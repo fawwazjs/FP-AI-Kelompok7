@@ -277,13 +277,19 @@ def detect_with_gemini(text: str) -> dict | None:
     prompt = f"""Kamu adalah ahli linguistik bahasa daerah Indonesia yang menguasai Bahasa Indonesia, Bahasa Jawa, dan Bahasa Madura.
 
 Analisis teks berikut dan berikan:
-1. Bahasa dominan keseluruhan (Indonesia, Jawa, Madura)
+1. Bahasa dominan keseluruhan (Indonesia, Jawa, Madura, atau Tidak pasti)
 2. Register/tingkat tutur:
    - Indonesia: "formal" atau "informal"
    - Jawa: "ngoko lugu", "ngoko alus", "krama lugu", atau "krama alus"
    - Madura: "Enja-Iya", "Engghi-enten", atau "Engghi-bhunten"
 3. Persentase kesopanan: ngokoPercentage (kasual) dan kramaPercentage (sopan) yang totalnya 100
 4. Analisis per-kata: untuk SETIAP kata dalam teks, tentukan bahasanya (Indonesia/Jawa/Madura/Asing) dan tingkat tuturnya (netral/ngoko/krama/halus/kasar)
+
+Aturan keputusan bahasa:
+- Tentukan bahasa keseluruhan berdasarkan persentase kata yang benar-benar teridentifikasi, bukan dari satu kata saja.
+- Jika kurang dari 50% kata mendukung satu bahasa Indonesia/Jawa/Madura, gunakan language "Tidak pasti" dan register "tidak diketahui".
+- Jika dua bahasa sama kuat, misalnya 50%-50%, gunakan language "Tidak pasti" dan register "ambigu".
+- Jika teks dominan bahasa asing seperti Inggris, gunakan language "Tidak pasti"; jangan memaksa hasil ke Madura hanya karena satu token pendek mirip kosakata lokal.
 
 {"Referensi kosakata dari database lokal:" if rag_context else ""}
 {rag_context}

@@ -95,7 +95,6 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 MAX_DOCX_UNCOMPRESSED_BYTES = int(os.getenv("MAX_DOCX_UNCOMPRESSED_BYTES", str(30 * 1024 * 1024)))
 OUTPUT_TTL_SECONDS = int(os.getenv("OUTPUT_TTL_SECONDS", "3600"))
 SUPPORTED_UPLOADS = {"pdf", "docx", "doc", "txt"}
-VOCAB_ALLOWLIST = set(ID_TO_JV) | set(ID_TO_MAD) | set(REV_JV) | set(REV_MAD)
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -138,11 +137,74 @@ def _validate_language(source_lang: str, target_lang: str, level: str):
     if level not in SUPPORTED_LEVELS:
         raise HTTPException(status_code=400, detail="Unsupported politeness level")
 
-def _safe_vocab_tokens(text: str):
-    clean = re.sub(r"[^\w\s'\-]", " ", text.lower())
-    for token in clean.split():
-        if token in VOCAB_ALLOWLIST:
-            yield token
+def _vocab_tokens(text: str):
+    clean = re.sub(r"[^\w\s'\-̀-ỹ]", " ", text.lower(), flags=re.UNICODE)
+    yield from (token for token in clean.split() if len(token) > 1)
+
+def _build_regional_vocab() -> dict[str, dict[str, dict[str, str]]]:
+    vocab: dict[str, dict[str, dict[str, str]]] = {"jv": {}, "mad": {}}
+
+    def add_token(language: str, token: str, register: str, meaning: str):
+        for part in _vocab_tokens(token):
+            vocab[language].setdefault(part, {
+                "word": part,
+                "language": language,
+                "register": register,
+                "meaning": meaning,
+            })
+
+    for meaning, entry in ID_TO_JV.items():
+        add_token("jv", entry["high"], "Krama", meaning)
+        add_token("jv", entry["low"], "Ngoko", meaning)
+    for phrase, meaning in REV_JV.items():
+        add_token("jv", phrase, "Jawa", meaning)
+
+    for meaning, entry in ID_TO_MAD.items():
+        add_token("mad", entry["high"], "Engghi-Bhanten", meaning)
+        add_token("mad", entry["low"], "Enja-Iya", meaning)
+    for phrase, meaning in REV_MAD.items():
+        add_token("mad", phrase, "Madura", meaning)
+
+    return vocab
+
+REGIONAL_VOCAB = _build_regional_vocab()
+
+def _official_vocab_tokens(text: str, language: str):
+    if language not in REGIONAL_VOCAB:
+        return
+    seen_vocab = REGIONAL_VOCAB[language]
+    for token in _vocab_tokens(text):
+        if token in seen_vocab:
+            yield token, seen_vocab[token]
+
+def _record_vocab_usage(db: Session, text: str, language: str):
+    for token, meta in _official_vocab_tokens(text, language):
+        stat = db.query(VocabularyStat).filter(VocabularyStat.word == token).first()
+        if stat:
+            stat.count += 1
+            if stat.language not in REGIONAL_VOCAB:
+                stat.language = language
+        else:
+            stat = VocabularyStat(word=token, language=language, count=1)
+            db.add(stat)
+
+def _record_translation_vocabulary(
+    db: Session,
+    source_text: str,
+    source_lang: str,
+    translated_text: str,
+    target_lang: str,
+):
+    _record_vocab_usage(db, source_text, source_lang)
+    _record_vocab_usage(db, translated_text, target_lang)
+
+def _vocab_meta(word: str, language: str | None = None) -> dict[str, str] | None:
+    if language in REGIONAL_VOCAB and word in REGIONAL_VOCAB[language]:
+        return REGIONAL_VOCAB[language][word]
+    for vocab in REGIONAL_VOCAB.values():
+        if word in vocab:
+            return vocab[word]
+    return None
 
 def _cleanup_old_files():
     cutoff = time.time() - OUTPUT_TTL_SECONDS
@@ -293,13 +355,13 @@ def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
     )
     db.add(log)
     
-    for token in _safe_vocab_tokens(req.text):
-        stat = db.query(VocabularyStat).filter(VocabularyStat.word == token).first()
-        if stat:
-            stat.count += 1
-        else:
-            stat = VocabularyStat(word=token, language=req.source_lang, count=1)
-            db.add(stat)
+    _record_translation_vocabulary(
+        db,
+        req.text,
+        req.source_lang,
+        result["translatedText"],
+        req.target_lang,
+    )
     
     db.commit()
     return result
@@ -349,9 +411,16 @@ def translate_document(
             krama_pct=85.0 if summary["politeness_summary"] in ["Krama Alus", "Engghi-Bhanten"] else 15.0
         )
         db.add(log)
+        translated_text = summary.get("translated_text", "")
+        _record_translation_vocabulary(
+            db,
+            summary.get("source_text", ""),
+            source_lang,
+            translated_text,
+            target_lang,
+        )
         db.commit()
 
-        translated_text = summary.get("translated_text", "")
         preview_limit = 20000
         return {
             "filename": download_filename,
@@ -392,27 +461,36 @@ def download_translated_document(filename: str, background_tasks: BackgroundTask
 
 @app.get("/api/insights")
 def get_insights(db: Session = Depends(get_db)):
-    # Query logs count
     total_translations = db.query(TranslationLog).count()
-    
-    top_words = db.query(VocabularyStat).order_by(VocabularyStat.count.desc()).limit(3).all()
-    popular_words = [{"word": w.word, "language": w.language, "count": w.count} for w in top_words]
+    all_stats = db.query(VocabularyStat).order_by(VocabularyStat.count.desc(), VocabularyStat.word.asc()).all()
+    valid_stats = []
+    for stat in all_stats:
+        meta = _vocab_meta(stat.word, stat.language)
+        if not meta:
+            continue
+        valid_stats.append((stat, meta))
 
-    # Handle default popular words if database is empty
-    if not popular_words:
-        popular_words = [
-            {"word": "tindak", "language": "jv", "count": 1420},
-            {"word": "neddha", "language": "mad", "count": 920},
-            {"word": "sekul", "language": "jv", "count": 880}
-        ]
+    popular_words = [
+        {
+            "word": stat.word,
+            "language": meta["language"],
+            "languageName": "Bahasa Jawa" if meta["language"] == "jv" else "Bahasa Madura",
+            "count": stat.count,
+            "meaning": meta.get("meaning", ""),
+            "register": meta.get("register", ""),
+        }
+        for stat, meta in valid_stats[:5]
+    ]
+    total_vocab_usage = sum(stat.count for stat, _ in valid_stats)
 
     return {
         "metrics": {
-            "total_vocabulary": 25480,
-            "active_contributors": 1240,
-            "vitality_status": "Stabil",
-            "preservation_accuracy": "94.8%",
-            "total_translations": total_translations + 2450
+            "total_vocabulary": len(valid_stats),
+            "total_vocab_usage": total_vocab_usage,
+            "active_contributors": total_translations,
+            "vitality_status": "Aktif" if total_vocab_usage else "Belum ada data",
+            "preservation_accuracy": "Data riil",
+            "total_translations": total_translations
         },
         "popular_words": popular_words,
         "vitality_trends": {

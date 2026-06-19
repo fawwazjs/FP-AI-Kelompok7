@@ -34,6 +34,7 @@ def _summary(output_path: str, target_lang: str, level: str, translated_text: st
         "politeness_summary": _politeness_summary(target_lang, level),
         "file_created": output_path,
         "translated_text": translated_text.strip(),
+        "source_text": source_text,
     }
 
 

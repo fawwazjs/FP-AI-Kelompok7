@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Languages,
   ArrowLeftRight,
-  Volume2,
   Copy,
   FileText,
   FileUp,
@@ -53,6 +52,25 @@ interface DocumentTranslationResult {
   politenessSummary: string;
   sourceLang: string;
   targetLang: string;
+}
+
+interface InsightsResult {
+  metrics: {
+    total_vocabulary: number;
+    total_vocab_usage?: number;
+    active_contributors: number;
+    vitality_status: string;
+    preservation_accuracy: string;
+    total_translations: number;
+  };
+  popular_words: {
+    word: string;
+    language: string;
+    languageName?: string;
+    count: number;
+    meaning?: string;
+    register?: string;
+  }[];
 }
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
@@ -227,6 +245,9 @@ export default function HeritageGuardApp() {
   const [activePage, setActivePage] = useState<PageType>('landing');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; icon: string } | null>(null);
+  const [insightsData, setInsightsData] = useState<InsightsResult | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsRefreshKey, setInsightsRefreshKey] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light';
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -323,6 +344,35 @@ export default function HeritageGuardApp() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const formatMetric = (value: number) => new Intl.NumberFormat('id-ID').format(value);
+  const formatSearchCount = (value: number) => `${formatMetric(value)} pencarian`;
+
+  const fetchInsights = useCallback(async (signal?: AbortSignal) => {
+    setInsightsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/insights`, { signal });
+      if (!response.ok) throw new Error('Failed to load insights');
+      const data = await response.json() as InsightsResult;
+      setInsightsData(data);
+    } catch {
+      if (!signal?.aborted) setInsightsData(null);
+    } finally {
+      if (!signal?.aborted) setInsightsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activePage !== 'insights') return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void fetchInsights(controller.signal);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activePage, fetchInsights, insightsRefreshKey]);
+
   // --- DETECTOR ACTION LOGIC ---
   const performOfflineDetection = (text: string) => {
     const clean = text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
@@ -343,26 +393,14 @@ export default function HeritageGuardApp() {
     const jvInggilVerbs = new Set(['dhahar', 'sare', 'tindak', 'rawuh', 'sowan', 'kersa', 'nampi', 'jumeneng', 'dalem', 'sugeng']);
     const jvKasar = new Set(['jancok', 'jancuk', 'dancok', 'cuk', 'asu', 'bajingan', 'raimu', 'ndasmu', 'matamu', 'picek']);
 
-    const madEnjaIyaCore = new Set(["sengko'", "engko'", "ba'na", "ba'en", "enja'"]);
-    const madEngghiEntenCore = new Set(["bula", "bula'", "dhika", "dhiko", "sampeyan"]);
-    const madEngghiBhuntenCore = new Set(["kaula", "kaula'", "bhâdhân", "panjhenengngan", "engghi", "bhanten", "bhunten", "ajunan", "srèra"]);
+    const madEnjaIyaCore = new Set(["sengko'", "engko'", "ba'na", "ba'en", "terro", "ngakan", "ngakana", "nase", "nase'", "enja'"]);
+    const madEngghiEntenCore = new Set(["bula", "bula'", "dhika", "dhiko", "ka", "dhimma", "sampeyan"]);
+    const madEngghiBhuntenCore = new Set(["kaula", "kaula'", "bhâdhân", "panjhenengngan", "badhi", "alomampah", "alomampaha", "engghi", "bhanten", "bhunten", "ajunan", "srèra"]);
     const indoStandard = new Set(['saya', 'mau', 'makan', 'tidur', 'tidak', 'sudah', 'sedang', 'sangat', 'di', 'warung']);
     const indoSlang = new Set(['gue', 'gua', 'lu', 'nggak', 'aja', 'udah', 'lagi', 'kenapa', 'banget', 'pengen', 'bobo', 'mager', 'bodo']);
 
-    let jvScore = 0;
-    let madScore = 0;
-    let idScore = 0;
-
-    words.forEach(w => {
-      if (jvNgokoCore.has(w) || jvKramaCore.has(w) || jvInggilVerbs.has(w) || jvKasar.has(w)) jvScore++;
-      if (madEnjaIyaCore.has(w) || madEngghiEntenCore.has(w) || madEngghiBhuntenCore.has(w)) madScore++;
-      if (indoStandard.has(w) || indoSlang.has(w)) idScore++;
-    });
-
-    if (words.some(w => ["kula", "badhe", "dhahar", "sare", "mangan", "turu", "arep", "kowe"].includes(w))) jvScore += 10;
-    if (words.some(w => ["sèngko'", "sengko'", "kaula'", "bhâdhân", "bhadhan", "panjhenengngan", "dhika", "ba'na"].includes(w))) madScore += 10;
-
     const wordAnalysis = words.map(word => {
+      if (word.length <= 1) return { word, language: 'Tidak pasti', level: 'tidak dikenal' };
       if (jvKasar.has(word)) return { word, language: 'Jawa', level: 'ngoko kasar' };
       if (jvKramaCore.has(word) || jvInggilVerbs.has(word)) return { word, language: 'Jawa', level: 'krama' };
       if (jvNgokoCore.has(word)) return { word, language: 'Jawa', level: 'ngoko' };
@@ -374,10 +412,20 @@ export default function HeritageGuardApp() {
       return { word, language: 'Tidak pasti', level: 'tidak dikenal' };
     });
 
-    let lang = 'Indonesia';
-    if (jvScore > idScore && jvScore >= madScore) lang = 'Jawa';
-    else if (madScore > idScore && madScore >= jvScore) lang = 'Madura';
-    else if (idScore === 0 && jvScore === 0 && madScore === 0) {
+    const languageCounts = wordAnalysis.reduce<Record<string, number>>((counts, item) => {
+      if (item.language === 'Indonesia' || item.language === 'Jawa' || item.language === 'Madura') {
+        counts[item.language] += 1;
+      }
+      return counts;
+    }, { Indonesia: 0, Jawa: 0, Madura: 0 });
+    const topCount = Math.max(languageCounts.Indonesia, languageCounts.Jawa, languageCounts.Madura);
+    const topLanguages = Object.entries(languageCounts)
+      .filter(([, count]) => count === topCount)
+      .map(([language]) => language);
+    const topPercentage = Math.round((topCount / words.length) * 1000) / 10;
+    const minLanguagePercentage = 50;
+
+    if (topCount === 0) {
       return {
         language: 'Tidak pasti',
         register: 'tidak diketahui',
@@ -387,6 +435,30 @@ export default function HeritageGuardApp() {
         wordAnalysis
       };
     }
+
+    if (topLanguages.length > 1) {
+      return {
+        language: 'Tidak pasti',
+        register: 'ambigu',
+        explanation: 'Persentase indikator bahasa seimbang, sehingga sistem tidak cukup yakin untuk memilih satu bahasa.',
+        ngokoPercentage: 50,
+        kramaPercentage: 50,
+        wordAnalysis
+      };
+    }
+
+    if (topPercentage < minLanguagePercentage) {
+      return {
+        language: 'Tidak pasti',
+        register: 'tidak diketahui',
+        explanation: `Hanya ${topPercentage}% token yang cocok dengan indikator ${topLanguages[0]}; bukti belum cukup untuk menetapkan bahasa keseluruhan.`,
+        ngokoPercentage: 0,
+        kramaPercentage: 0,
+        wordAnalysis
+      };
+    }
+
+    const lang = topLanguages[0];
 
     if (lang === 'Indonesia') {
       const matchedSlang = words.filter(w => indoSlang.has(w));
@@ -801,6 +873,7 @@ export default function HeritageGuardApp() {
         setTranslationStatus(data.usedFallback
           ? 'Hasil fallback lokal.'
           : `Terjemahan konteks via ${providerLabel}.`);
+        setInsightsRefreshKey((value) => value + 1);
       } else {
         throw new Error('Server translation failed');
       }
@@ -816,6 +889,7 @@ export default function HeritageGuardApp() {
       setCulturalContext(offlineResult.context);
       setSuggestedVersion(offlineResult.alternativeText || null);
       setTranslationStatus('Hasil fallback lokal.');
+      setInsightsRefreshKey((value) => value + 1);
     } finally {
       window.clearTimeout(timeoutId);
       if (requestId === translationRequestIdRef.current) {
@@ -851,20 +925,6 @@ export default function HeritageGuardApp() {
     setTargetLang(temp);
     setInputText(translatedText);
     triggerToast('Bahasa ditukar', 'refresh-cw');
-  };
-
-  // Text-To-Speech
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'id-ID'; // Indonesian reading profile works best phonetically
-      utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
-      triggerToast('Memutar audio pengucapan...', 'volume-2');
-    } else {
-      triggerToast('Perangkat tidak mendukung Audio.', 'x');
-    }
   };
 
   // Copy Clipboard
@@ -976,6 +1036,7 @@ export default function HeritageGuardApp() {
       setDocPolitenessSummary(data.politenessSummary);
       setDocProgress(100);
       setDocProgressStep('Penerjemahan selesai.');
+      setInsightsRefreshKey((value) => value + 1);
       triggerToast('Dokumen berhasil diterjemahkan!', 'check');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Dokumen gagal diterjemahkan.';
@@ -1248,9 +1309,6 @@ export default function HeritageGuardApp() {
                   </div>
                   <div className="bg-neutral-light/35 border-t border-border-color px-5 py-3 flex justify-between items-center">
                     <span className="text-xs text-text-muted font-medium">{inputText.length} / 5000 karakter</span>
-                    <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => speakText(inputText)} title="Dengarkan teks">
-                      <Volume2 size={16} />
-                    </button>
                   </div>
                 </div>
 
@@ -1295,9 +1353,6 @@ export default function HeritageGuardApp() {
                       {translationStatus}
                     </span>
                     <div className="flex gap-2 shrink-0">
-                      <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => speakText(translatedText)} title="Dengarkan terjemahan">
-                        <Volume2 size={16} />
-                      </button>
                       <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => copyToClipboard(translatedText)} title="Salin terjemahan">
                         <Copy size={16} />
                       </button>
@@ -1633,7 +1688,9 @@ export default function HeritageGuardApp() {
               </div>
               <div>
                 <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kosakata Terjaga</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">25,480+</p>
+                <p className="font-heading font-bold text-xl text-text-dark">
+                  {insightsData ? formatMetric(insightsData.metrics.total_vocabulary) : insightsLoading ? '...' : '0'}
+                </p>
               </div>
             </div>
 
@@ -1642,8 +1699,10 @@ export default function HeritageGuardApp() {
                 <Users size={18} />
               </div>
               <div>
-                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kontributor Aktif</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">1,240</p>
+                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Terjemahan Tercatat</h5>
+                <p className="font-heading font-bold text-xl text-text-dark">
+                  {insightsData ? formatMetric(insightsData.metrics.total_translations) : insightsLoading ? '...' : '0'}
+                </p>
               </div>
             </div>
 
@@ -1652,8 +1711,10 @@ export default function HeritageGuardApp() {
                 <Globe size={18} />
               </div>
               <div>
-                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Indeks Kesehatan</h5>
-                <p className="font-heading font-bold text-xl text-primary">Stabil</p>
+                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Status Data</h5>
+                <p className="font-heading font-bold text-xl text-primary">
+                  {insightsData ? insightsData.metrics.vitality_status : insightsLoading ? '...' : 'Belum ada'}
+                </p>
               </div>
             </div>
 
@@ -1662,8 +1723,10 @@ export default function HeritageGuardApp() {
                 <Activity size={18} />
               </div>
               <div>
-                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kombinasi Akurasi</h5>
-                <p className="font-heading font-bold text-xl text-text-dark">94.8%</p>
+                <h5 className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-0.5">Kemunculan Resmi</h5>
+                <p className="font-heading font-bold text-xl text-text-dark">
+                  {insightsData ? formatMetric(insightsData.metrics.total_vocab_usage || 0) : insightsLoading ? '...' : '0'}
+                </p>
               </div>
             </div>
           </div>
@@ -1677,9 +1740,6 @@ export default function HeritageGuardApp() {
                 <div className="font-heading font-bold text-4xl text-white dark:text-primary mb-2">{WOTD_WORDS[wotdIndex].word}</div>
                 <div className="flex items-center gap-2 mb-6">
                   <span className="text-xs text-[#FFDF7B] dark:text-accent-gold italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
-                  <button className="bg-white/15 dark:bg-primary-transparent hover:bg-accent-gold dark:hover:bg-primary text-white dark:text-primary dark:hover:text-neutral-950 rounded-full w-6 h-6 flex items-center justify-center cursor-pointer transition-colors" onClick={() => speakText(WOTD_WORDS[wotdIndex].word)} title="Putar audio">
-                    <Volume2 size={12} />
-                  </button>
                 </div>
               </div>
               <div className="border-t border-white/10 dark:border-border-color pt-4">
@@ -1694,38 +1754,30 @@ export default function HeritageGuardApp() {
             <div className="bg-white border border-border-color rounded-3xl p-6 shadow-md flex flex-col justify-between">
               <h3 className="font-heading font-bold text-lg text-primary mb-4">Kosakata Terpopuler</h3>
               <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Tindak</h4>
-                    <p className="text-[11px] text-text-muted">Jawa Krama &rarr; Pergi</p>
+                {insightsLoading && !insightsData ? (
+                  <div className="bg-bg-cream border border-border-color px-4 py-4 rounded-lg text-sm text-text-muted">
+                    Memuat kosakata resmi dari aktivitas terjemahan...
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">1.4k pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Krama Halus</span>
+                ) : insightsData && insightsData.popular_words.length > 0 ? (
+                  insightsData.popular_words.map((item) => (
+                    <div key={`${item.language}-${item.word}`} className="flex justify-between items-center gap-4 bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
+                      <div className="min-w-0">
+                        <h4 className="font-heading font-semibold text-sm capitalize truncate">{item.word}</h4>
+                        <p className="text-[11px] text-text-muted truncate">
+                          {(item.languageName || item.language).replace('Bahasa ', '')} &rarr; {item.meaning || 'kosakata resmi'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-bold text-primary">{formatSearchCount(item.count)}</div>
+                        <span className="text-[9px] font-semibold text-accent-brown">{item.register || 'Terverifikasi'}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-bg-cream border border-border-color px-4 py-4 rounded-lg text-sm text-text-muted">
+                    Belum ada kosakata resmi yang tercatat dari terjemahan pengguna.
                   </div>
-                </div>
-
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Neddha</h4>
-                    <p className="text-[11px] text-text-muted">Madura Formal &rarr; Makan</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">920 pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Engghi-Bhanten</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center bg-bg-cream border border-border-color px-4 py-2.5 rounded-lg">
-                  <div>
-                    <h4 className="font-heading font-semibold text-sm">Sego / Sekul</h4>
-                    <p className="text-[11px] text-text-muted">Jawa &rarr; Nasi</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-primary">880 pencarian</div>
-                    <span className="text-[9px] font-semibold text-accent-brown">Ngoko / Krama</span>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 

@@ -64,6 +64,8 @@ class TranslationPipelineTests(unittest.TestCase):
             ("Panjhenengngan badhi alomampaha ka dhimma?", "Madura", "Engghi-bhunten"),
             ("Jancok", "Jawa", "ngoko kasar"),
             ("qwertyxyz", "Tidak pasti", "tidak diketahui"),
+            ("i want to walk to the moon", "Tidak pasti", "tidak diketahui"),
+            ("aku sengko'", "Tidak pasti", "ambigu"),
         ]
 
         for text, language, register in cases:
