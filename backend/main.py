@@ -31,7 +31,6 @@ from .document_service import (
     process_and_translate_txt,
 )
 from .gemini_service import chat_with_gemini, detect_with_gemini, get_gemini_status, translate_with_context_api
-from .rag_service import get_stats as rag_get_stats, is_available as rag_is_available
 
 app = FastAPI(title="Lokalator Core API", description="AI Preservasi Bahasa Jawa & Madura")
 
@@ -88,15 +87,15 @@ class ChatRequest(BaseModel):
 
 # Temp directories for document processing
 BASE_DIR = Path(__file__).resolve().parents[1]
-UPLOAD_DIR = BASE_DIR / "temp_uploads"
-OUTPUT_DIR = BASE_DIR / "temp_outputs"
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "temp_uploads")))
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(BASE_DIR / "temp_outputs")))
 MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "5000"))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 MAX_DOCX_UNCOMPRESSED_BYTES = int(os.getenv("MAX_DOCX_UNCOMPRESSED_BYTES", str(30 * 1024 * 1024)))
 OUTPUT_TTL_SECONDS = int(os.getenv("OUTPUT_TTL_SECONDS", "3600"))
 SUPPORTED_UPLOADS = {"pdf", "docx", "doc", "txt"}
-UPLOAD_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MEDIA_TYPES = {
     "pdf": "application/pdf",
@@ -115,10 +114,11 @@ def read_root():
 
 @app.get("/api/health")
 def health_check():
+    gemini = get_gemini_status()
     return {
         "status": "ok",
         "version": "2.0.0",
-        "rag": "ready" if rag_is_available() else "unavailable",
+        "rag": "enabled" if gemini.get("ragEnabled") else "disabled",
     }
 
 @app.get("/api/gemini-status")

@@ -1,0 +1,50 @@
+services:
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    env_file:
+      - path: ./deploy/.env.deploy
+        required: false
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    restart: unless-stopped
+    env_file:
+      - path: ./deploy/.env.deploy
+        required: false
+    volumes:
+      - lokalator_data:/data
+      - lokalator_uploads:/app/temp_uploads
+      - lokalator_outputs:/app/temp_outputs
+
+volumes:
+  caddy_data:
+  caddy_config:
+  lokalator_data:
+  lokalator_uploads:
+  lokalator_outputs:

@@ -14,10 +14,13 @@ logger = logging.getLogger("lokalator.rag")
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATASET_DIR = BASE_DIR / "Dataset"
 
-PERSIST_DIR = BASE_DIR / "chroma_db"
+PERSIST_DIR = Path(os.getenv("RAG_PERSIST_DIR", str(BASE_DIR / "chroma_db")))
 
 # Embedding model - multilingual, supports Indonesian/Javanese/Madurese text
-EMBEDDING_MODEL_NAME = os.getenv("HG_EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
+EMBEDDING_MODEL_NAME = os.getenv(
+    "LOKALATOR_EMBEDDING_MODEL",
+    os.getenv("HG_EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2"),
+)
 
 # Singletons
 _embedding_model = None

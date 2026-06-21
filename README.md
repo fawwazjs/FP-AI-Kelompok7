@@ -107,6 +107,31 @@ Cek status konfigurasi dengan `GET /api/gemini-status`.
 
 ---
 
+## ☁️ Deployment Self-Managed
+
+Repository ini menyertakan konfigurasi deployment berbasis Docker Compose untuk
+server yang dikelola sendiri, misalnya Oracle Cloud Always Free VM, VPS kecil,
+Coolify, atau Dokploy:
+
+```bash
+cp deploy/.env.deploy.example deploy/.env.deploy
+docker compose --env-file deploy/.env.deploy up -d --build
+```
+
+Konfigurasi production utama:
+
+- `compose.yaml`: menjalankan Caddy, frontend Next.js, dan backend FastAPI.
+- `deploy/Caddyfile`: reverse proxy HTTPS dan routing `/api/*` ke backend.
+- `backend/Dockerfile`: image FastAPI dengan dependency Python penuh.
+- `frontend/Dockerfile`: image Next.js standalone.
+- `deploy/.env.deploy.example`: template environment variable production.
+
+Catatan lengkap ada di `deploy/README.md`. Simpan `GEMINI_API_KEY` hanya di
+`deploy/.env.deploy` atau secret manager platform deployment; jangan commit file
+tersebut.
+
+---
+
 Ikuti langkah-langkah di bawah ini secara berurutan untuk melakukan setup proyek dari awal di komputer Anda:
 
 ### Langkah 1: Clone Repository

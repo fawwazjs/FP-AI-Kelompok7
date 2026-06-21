@@ -75,7 +75,14 @@ interface InsightsResult {
   }[];
 }
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+const API_BASE_URL = (
+  RAW_API_BASE_URL === undefined
+    ? process.env.NODE_ENV === 'production'
+      ? ''
+      : 'http://127.0.0.1:8000'
+    : RAW_API_BASE_URL
+).replace(/\/$/, '');
 
 const LOCAL_PHRASES: Record<string, Record<string, { high: string; low: string; context: string; altHigh?: string; altLow?: string }>> = {
   'id_jv': {
