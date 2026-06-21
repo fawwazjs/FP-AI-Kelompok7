@@ -33,7 +33,7 @@ from .document_service import (
 from .gemini_service import chat_with_gemini, detect_with_gemini, get_gemini_status, translate_with_context_api
 from .rag_service import get_stats as rag_get_stats, is_available as rag_is_available
 
-app = FastAPI(title="HeritageGuard Core API", description="AI Preservasi Bahasa Jawa & Madura")
+app = FastAPI(title="Lokalator Core API", description="AI Preservasi Bahasa Jawa & Madura")
 
 allowed_origins = [
     origin.strip()
@@ -111,7 +111,7 @@ def startup_event():
 
 @app.get("/")
 def read_root():
-    return {"message": "HeritageGuard API is active", "version": "1.0.0"}
+    return {"message": "Lokalator API is active", "version": "1.0.0"}
 
 @app.get("/api/health")
 def health_check():

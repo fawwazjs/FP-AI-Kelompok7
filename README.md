@@ -1,6 +1,6 @@
-# HeritageGuard
+# Lokalator
 
-**HeritageGuard** adalah platform digital berbasis kecerdasan buatan (AI) yang dirancang untuk melestarikan bahasa daerah di Indonesia, dengan fokus utama pada **Bahasa Jawa** dan **Bahasa Madura**. Platform ini membantu pengguna menerjemahkan teks dan dokumen (PDF/DOCX) secara kontekstual sekaligus mendeteksi tingkat kesopanan bahasa agar tetap menghormati norma kebudayaan lokal.
+**Lokalator** adalah platform digital berbasis kecerdasan buatan (AI) yang dirancang untuk melestarikan bahasa daerah di Indonesia, dengan fokus utama pada **Bahasa Jawa** dan **Bahasa Madura**. Platform ini membantu pengguna menerjemahkan teks dan dokumen (PDF/DOCX) secara kontekstual sekaligus mendeteksi tingkat kesopanan bahasa agar tetap menghormati norma kebudayaan lokal.
 
 Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan Artifisial dan Machine Learning** oleh **Kelompok 7 Kelas A**.
 
@@ -18,7 +18,7 @@ Proyek ini dikembangkan sebagai **Final Project** untuk mata kuliah **Kecerdasan
 1. **Penerjemah Bahasa Daerah Kontekstual**: Menerjemahkan kalimat dua arah secara presisi antara Bahasa Indonesia ↔ Jawa (Ngoko & Krama) serta Indonesia ↔ Madura (Enja-Iya & Engghi-Bhanten).
 2. **Deteksi Tingkat Kesopanan (Leksikal)**: Menganalisis kalimat input dan mengukur persentase kesopanan (Ngoko, Krama, Formal, Informal) lengkap dengan penjelasan konteks budayanya.
 3. **Penerjemah Dokumen Massal**: Mengunggah berkas PDF atau DOCX untuk diekstrak, diterjemahkan, dan diunduh kembali tanpa merusak tata letak dokumen asli.
-4. **Portal Insights & Statistik**: Menampilkan visualisasi tren penurunan vitalitas bahasa ibu per generasi, daftar kosakata terpopuler, serta modul interaktif *Kata Hari Ini* (*Word of the Day*) beserta pelafalan audionya.
+4. **Portal Analitik Bahasa**: Menampilkan visualisasi tren penurunan vitalitas bahasa ibu per generasi, daftar kosakata terpopuler, serta modul interaktif *Kata Hari Ini* (*Word of the Day*) beserta pelafalan audionya.
 
 ---
 
@@ -46,7 +46,7 @@ FP-AI-Kelompok7/
 
 ## � Integrasi AI (Gemini)
 
-HeritageGuard menggunakan **Google Gemini API** untuk dua kapabilitas AI:
+Lokalator menggunakan **Google Gemini API** untuk dua kapabilitas AI:
 
 ### 1. Terjemahan Cerdas
 Penerjemah teks otomatis memakai provider API terlebih dahulu agar terjemahan memperhatikan konteks kalimat utuh, imbuhan, reduplikasi, idiom, dan tingkat tutur target. Jika Gemini atau provider API tidak tersedia, sistem langsung memakai fallback kamus lokal tanpa menampilkan error ke pengguna.

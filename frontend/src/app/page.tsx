@@ -1,5 +1,6 @@
 "use client";
 
+import Image from 'next/image';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Languages,
@@ -9,7 +10,6 @@ import {
   FileUp,
   Trash2,
   Download,
-  Award,
   TrendingUp,
   BookOpen,
   Users,
@@ -25,11 +25,13 @@ import {
   Sun,
   Moon,
   MessageCircle,
+  Maximize2,
+  Minimize2,
   Send
 } from 'lucide-react';
 
 // --- TYPE DEFINITIONS & LOCAL DATA ---
-type PageType = 'landing' | 'translator' | 'doc-translator' | 'detector' | 'insights' | 'about' | 'chatbot';
+type PageType = 'landing' | 'translator' | 'doc-translator' | 'detector' | 'insights' | 'about' | 'privacy' | 'terms';
 
 interface TranslationResult {
   translatedText: string;
@@ -241,7 +243,7 @@ const WOTD_WORDS = [
   { word: 'Sare', spell: '/sa-re/', type: 'Jawa Krama', mean: 'Tidur (digunakan untuk menghormati orang lain)', ex: '"Ibu nembe sare ing kamar wingking." (Ibu sedang tidur di kamar belakang.)' }
 ];
 
-export default function HeritageGuardApp() {
+export default function LokalatorApp() {
   const [activePage, setActivePage] = useState<PageType>('landing');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; icon: string } | null>(null);
@@ -328,6 +330,8 @@ export default function HeritageGuardApp() {
   const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto cycle word of the day
@@ -636,6 +640,14 @@ export default function HeritageGuardApp() {
     }
   };
 
+  useEffect(() => {
+    if (!chatWidgetOpen) return;
+    const timer = window.setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [chatWidgetOpen, chatExpanded, chatMessages.length]);
+
   // Switch hash route support
   useEffect(() => {
     const handleHash = () => {
@@ -644,9 +656,14 @@ export default function HeritageGuardApp() {
       else if (hash === '#penerjemah') setActivePage('translator');
       else if (hash === '#dokumen') setActivePage('doc-translator');
       else if (hash === '#deteksi') setActivePage('detector');
-      else if (hash === '#statistik') setActivePage('insights');
+      else if (hash === '#chatbot') {
+        setActivePage('landing');
+        setChatWidgetOpen(true);
+      }
+      else if (hash === '#analitik-bahasa' || hash === '#statistik') setActivePage('insights');
       else if (hash === '#tentang') setActivePage('about');
-      else if (hash === '#chatbot') setActivePage('chatbot');
+      else if (hash === '#kebijakan-privasi') setActivePage('privacy');
+      else if (hash === '#syarat-ketentuan') setActivePage('terms');
     };
     window.addEventListener('hashchange', handleHash);
     handleHash();
@@ -663,9 +680,10 @@ export default function HeritageGuardApp() {
       translator: '#penerjemah',
       'doc-translator': '#dokumen',
       detector: '#deteksi',
-      insights: '#statistik',
+      insights: '#analitik-bahasa',
       about: '#tentang',
-      chatbot: '#chatbot'
+      privacy: '#kebijakan-privasi',
+      terms: '#syarat-ketentuan'
     };
     window.location.hash = hashes[page];
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1075,18 +1093,24 @@ export default function HeritageGuardApp() {
     <div className="flex flex-col min-h-screen text-text-dark font-sans relative antialiased">
 
       {/* Navigation Bar */}
-      <nav className="sticky top-0 z-50 bg-bg-cream/90 backdrop-blur-md border-b border-border-color px-6 py-4 flex justify-between items-center smooth-transition">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavigate('landing')}>
-          <div className="w-9 h-9 bg-linear-to-br from-primary to-accent-brown rounded-lg flex items-center justify-center text-white font-heading font-extrabold shadow-md">
-            H
+      <nav className="sticky top-0 z-50 bg-bg-cream/90 backdrop-blur-md border-b border-border-color px-6 py-4 grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center gap-6 smooth-transition">
+        <div className="flex items-center gap-3 cursor-pointer justify-self-start" onClick={() => handleNavigate('landing')}>
+          <div className="h-[54px] w-[54px] rounded-lg flex items-center justify-center shadow-md overflow-hidden bg-white">
+            <Image
+              src="/assets/lokalator_logo_centered.png"
+              alt="Logo Lokalator"
+              width={54}
+              height={54}
+              className="brand-logo h-full w-full scale-90 object-contain"
+            />
           </div>
           <span className="font-heading font-bold text-xl text-primary">
-            Heritage<span className="text-accent-gold">Guard</span>
+            Lokalator
           </span>
         </div>
 
         {/* Desktop Menu */}
-        <ul className="hidden md:flex items-center gap-8 list-none">
+        <ul className="hidden md:flex items-center justify-center gap-8 list-none justify-self-center">
           <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'landing' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('landing')}>
             Beranda
             {activePage === 'landing' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
@@ -1100,35 +1124,30 @@ export default function HeritageGuardApp() {
             {activePage === 'doc-translator' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
           <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'detector' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('detector')}>
-            Deteksi Register
+            Deteksi Kesopanan
             {activePage === 'detector' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
           <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'insights' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('insights')}>
-            Insights & Statistik
+            Analitik Bahasa
             {activePage === 'insights' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
           <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'about' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('about')}>
             Tentang
             {activePage === 'about' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
           </li>
-          <li className={`relative font-semibold text-sm cursor-pointer smooth-transition ${activePage === 'chatbot' ? 'text-primary' : 'text-text-medium hover:text-primary'}`} onClick={() => handleNavigate('chatbot')}>
-            Chatbot AI
-            {activePage === 'chatbot' && <div className="absolute -bottom-1 left-0 right-0 h-[2px] bg-accent-gold" />}
-          </li>
-          <li className="flex items-center">
-            <button onClick={toggleTheme} className="text-text-medium hover:text-primary p-2 rounded-lg hover:bg-neutral-light cursor-pointer smooth-transition" title="Ubah Tema">
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
-          </li>
-          <li>
-            <button className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
-              Mulai Sekarang
-            </button>
-          </li>
         </ul>
 
+        <div className="hidden md:flex items-center justify-end gap-5 justify-self-end">
+          <button onClick={toggleTheme} className="text-text-medium hover:text-primary p-2 rounded-lg hover:bg-neutral-light cursor-pointer smooth-transition" title="Ubah Tema">
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+          </button>
+          <button className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
+            Mulai Sekarang
+          </button>
+        </div>
+
         {/* Mobile menu toggle */}
-        <button className="block md:hidden text-primary p-1 cursor-pointer" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+        <button className="block md:hidden text-primary p-1 cursor-pointer justify-self-end" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
 
@@ -1138,10 +1157,9 @@ export default function HeritageGuardApp() {
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('landing')}>Beranda</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('translator')}>Penerjemah</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('doc-translator')}>Terjemah Dokumen</div>
-            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('detector')}>Deteksi Register</div>
-            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('insights')}>Insights & Statistik</div>
+            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('detector')}>Deteksi Kesopanan</div>
+            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('insights')}>Analitik Bahasa</div>
             <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('about')}>Tentang</div>
-            <div className="py-2 border-b border-neutral-light font-semibold text-sm text-text-medium" onClick={() => handleNavigate('chatbot')}>Chatbot AI</div>
             <button onClick={toggleTheme} className="flex items-center justify-center gap-2 border border-border-color py-2.5 rounded-lg text-text-medium font-semibold text-sm w-full cursor-pointer smooth-transition hover:bg-neutral-light">
               {theme === 'light' ? <><Moon size={16} /> Mode Gelap</> : <><Sun size={16} /> Mode Terang</>}
             </button>
@@ -1157,9 +1175,15 @@ export default function HeritageGuardApp() {
         <main className="flex-1">
           {/* Hero Section */}
           <section className="max-w-4xl mx-auto text-center px-6 pt-16 pb-12 flex flex-col items-center">
-            <div className="bg-primary-transparent border border-primary/10 text-primary font-semibold text-xs px-3.5 py-1.5 rounded-full flex items-center gap-2 mb-6">
-              <Award size={14} className="text-accent-gold" />
-              <span>HeritageGuard</span>
+            <div className="mb-6 h-[270px] w-[270px] md:h-[330px] md:w-[330px]">
+              <Image
+                src="/assets/lokalator_logo_and_name.png"
+                alt="Lokalator"
+                width={330}
+                height={330}
+                priority
+                className="brand-logo h-full w-full object-contain"
+              />
             </div>
             <h1 className="font-heading font-extrabold text-4xl md:text-5xl leading-tight mb-6 bg-gradient-to-br from-primary to-accent-brown bg-clip-text text-transparent">
               Melestarikan Bahasa Daerah dengan Teknologi Modern
@@ -1224,21 +1248,21 @@ export default function HeritageGuardApp() {
               <div className="absolute top-0 left-0 w-full h-[4px] bg-gradient-to-r from-primary via-accent-brown to-accent-gold" />
               <div className="text-center mb-12">
                 <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Alur Kerja</span>
-                <h2 className="font-heading font-bold text-3xl">Bagaimana HeritageGuard Bekerja</h2>
+                <h2 className="font-heading font-bold text-3xl">Bagaimana Lokalator Bekerja</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/5 absolute -top-5 left-0 leading-none">01</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">01</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Unggah Teks / Berkas</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Ketik kalimat pada editor terjemahan online atau masukkan file PDF/DOCX/DOC/TXT ke dropzone dokumen.</p>
                 </div>
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/5 absolute -top-5 left-0 leading-none">02</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">02</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Analisis NLP Kontekstual</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Model AI mengklasifikasi tingkat kesopanan leksikon bahasa daerah dan memproses struktur gramatikal.</p>
                 </div>
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/5 absolute -top-5 left-0 leading-none">03</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">03</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Unduh & Lihat Panduan</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Dapatkan hasil terjemahan lengkap dengan visualisasi persentase kesopanan serta penjelasan etika budayanya.</p>
                 </div>
@@ -1677,7 +1701,7 @@ export default function HeritageGuardApp() {
         <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-12">
           <div className="text-center mb-8">
             <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Portal Data Preservasi</span>
-            <h2 className="font-heading font-bold text-3xl">Linguistik Insights & Analitik</h2>
+            <h2 className="font-heading font-bold text-3xl">Analitik Bahasa</h2>
           </div>
 
           {/* Metrics row */}
@@ -1734,10 +1758,10 @@ export default function HeritageGuardApp() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
             {/* Word of the Day (Left Box) */}
-            <div className="bg-gradient-to-br from-primary to-primary-light dark:from-card-bg dark:to-neutral-light dark:border dark:border-border-color text-white dark:text-text-dark rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
+              <div className="bg-gradient-to-br from-primary to-primary-light dark:from-[#111614] dark:to-[#080A09] dark:border dark:border-border-color text-white dark:text-text-dark rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
               <div>
                 <span className="text-[10px] text-accent-gold tracking-widest font-extrabold uppercase block mb-1">Kata Daerah Hari Ini</span>
-                <div className="font-heading font-bold text-4xl text-white dark:text-primary mb-2">{WOTD_WORDS[wotdIndex].word}</div>
+                <div className="font-heading font-bold text-4xl text-white dark:text-[#65B29A] mb-2">{WOTD_WORDS[wotdIndex].word}</div>
                 <div className="flex items-center gap-2 mb-6">
                   <span className="text-xs text-[#FFDF7B] dark:text-accent-gold italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
                 </div>
@@ -1891,85 +1915,11 @@ export default function HeritageGuardApp() {
         </main>
       )}
 
-      {/* CHATBOT PAGE VIEW */}
-      {activePage === 'chatbot' && (
-        <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-8 flex flex-col">
-          <div className="text-center mb-6">
-            <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">AI Chatbot</span>
-            <h2 className="font-heading font-bold text-3xl text-primary dark:text-white">HeritageGuard AI</h2>
-            <p className="text-text-medium text-sm mt-2">Ajak bicara dalam Bahasa Indonesia, Jawa, atau Madura. Tanyakan tentang budaya, kosakata, atau minta terjemahan.</p>
-          </div>
-
-          <div className="flex-1 bg-card-bg dark:bg-gray-800 border border-border-color dark:border-gray-700 rounded-2xl flex flex-col overflow-hidden shadow-sm">
-            {/* Chat messages area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[400px] max-h-[500px]">
-              {chatMessages.length === 0 && (
-                <div className="text-center text-text-muted dark:text-gray-400 py-16">
-                  <MessageCircle size={48} className="mx-auto mb-4 opacity-30" />
-                  <p className="text-sm">Mulai percakapan dengan mengetik pesan di bawah.</p>
-                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                    {['Ajari aku bahasa Jawa!', 'Piye kabare?', 'Apa itu Krama Alus?', 'Sengko\' terro belajar Madura'].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => { setChatInput(suggestion); }}
-                        className="text-xs bg-primary/5 dark:bg-gray-700 border border-primary/10 dark:border-gray-600 text-primary dark:text-gray-200 px-3 py-1.5 rounded-full hover:bg-primary/10 dark:hover:bg-gray-600 cursor-pointer smooth-transition"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-primary text-white rounded-br-md'
-                      : 'bg-neutral-light dark:bg-gray-700 text-text-dark dark:text-gray-100 rounded-bl-md border border-border-color dark:border-gray-600'
-                  }`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-neutral-light dark:bg-gray-700 border border-border-color dark:border-gray-600 px-4 py-3 rounded-2xl rounded-bl-md text-sm text-text-muted dark:text-gray-400">
-                    <span className="animate-pulse">Mengetik...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Chat input */}
-            <div className="border-t border-border-color dark:border-gray-700 p-4">
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
-                  placeholder="Ketik pesan dalam bahasa apapun..."
-                  className="flex-1 bg-white dark:bg-gray-900 border border-border-color dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-text-dark dark:text-gray-100 placeholder:text-text-muted dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary smooth-transition"
-                />
-                <button
-                  onClick={handleSendChat}
-                  disabled={chatLoading || !chatInput.trim()}
-                  className="bg-primary hover:bg-primary/90 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white px-5 py-3 rounded-xl flex items-center gap-2 font-semibold text-sm cursor-pointer smooth-transition disabled:cursor-not-allowed"
-                >
-                  <Send size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
-      )}
-
       {/* ABOUT PAGE VIEW */}
       {activePage === 'about' && (
         <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-12">
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Tentang HeritageGuard</h1>
+            <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Tentang Lokalator</h1>
             <p className="text-text-medium text-sm md:text-base leading-relaxed">Melestarikan kekayaan budaya bahasa daerah di Indonesia melalui keunggulan kecerdasan buatan.</p>
           </div>
 
@@ -1982,7 +1932,7 @@ export default function HeritageGuardApp() {
                 Bahasa daerah merupakan aset warisan budaya nasional yang tiada tara. Namun, seiring berjalannya waktu, kefasihan penggunaan tingkat tutur yang baik seperti *Undha-Usuk* pada bahasa Jawa dan tata tutur bahasa Madura kian merosot di kalangan pemuda.
               </p>
               <p className="text-text-medium text-sm leading-relaxed mb-6 font-semibold text-primary">
-                HeritageGuard bertekad menjadi solusi digital terdepan untuk menjembatani preservasi aksara daerah melalui teknologi terapan.
+                Lokalator bertekad menjadi solusi digital terdepan untuk menjembatani preservasi aksara daerah melalui teknologi terapan.
               </p>
 
               <ul className="flex flex-col gap-3 list-none">
@@ -2005,7 +1955,7 @@ export default function HeritageGuardApp() {
             <div className="bg-white border border-border-color rounded-3xl p-6 md:p-8 shadow-md">
               <h3 className="font-heading font-bold text-xl text-primary mb-4 pb-2 border-b border-accent-gold-glow">Informasi Capstone</h3>
               <p className="text-text-medium text-sm leading-relaxed mb-4">
-                HeritageGuard dirancang sebagai Final Project mata kuliah Kecerdasan Artifisial dan Machine Learning Kelompok 7 Kelas A.
+                Lokalator dirancang sebagai Final Project mata kuliah Kecerdasan Artifisial dan Machine Learning Kelompok 7 Kelas A.
               </p>
 
               <div className="border border-border-color rounded-xl overflow-hidden mb-6">
@@ -2058,16 +2008,82 @@ export default function HeritageGuardApp() {
         </main>
       )}
 
+      {/* PRIVACY POLICY VIEW */}
+      {activePage === 'privacy' && (
+        <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-12">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Dokumen Legal</span>
+            <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Kebijakan Privasi</h1>
+            <p className="text-text-medium text-sm md:text-base leading-relaxed">Template kebijakan privasi Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
+          </div>
+
+          <div className="bg-white border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Data yang Dikumpulkan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Tuliskan jenis data yang diproses, misalnya teks terjemahan, metadata penggunaan, dan data unggahan dokumen.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Penggunaan Data</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Jelaskan bagaimana data digunakan untuk menjalankan fitur penerjemahan, deteksi kesopanan, analitik, dan peningkatan kualitas layanan.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Penyimpanan dan Keamanan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Isi kebijakan retensi, penghapusan dokumen sementara, dan langkah keamanan yang diterapkan.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Kontak</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Tambahkan kontak resmi pengelola Lokalator untuk permintaan privasi atau penghapusan data.</p>
+            </section>
+          </div>
+        </main>
+      )}
+
+      {/* TERMS VIEW */}
+      {activePage === 'terms' && (
+        <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-12">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Dokumen Legal</span>
+            <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Syarat Ketentuan</h1>
+            <p className="text-text-medium text-sm md:text-base leading-relaxed">Template syarat ketentuan penggunaan Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
+          </div>
+
+          <div className="bg-white border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Ketentuan Penggunaan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Tuliskan aturan dasar penggunaan fitur penerjemah, detektor kesopanan, chatbot, dan pemrosesan dokumen.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Batasan Layanan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Jelaskan bahwa hasil AI dan kamus lokal bersifat bantuan, dapat memiliki keterbatasan, dan perlu verifikasi untuk konteks resmi.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Hak Kekayaan Intelektual</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Isi ketentuan kepemilikan merek, aset, dataset, kode, dan konten yang dihasilkan atau diunggah pengguna.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Perubahan Ketentuan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Tambahkan mekanisme pembaruan syarat ketentuan dan tanggal berlaku dokumen.</p>
+            </section>
+          </div>
+        </main>
+      )}
+
       {/* Footer */}
       <footer className="bg-primary text-white/80 pt-16 pb-8 border-t-4 border-accent-gold mt-auto px-6 relative">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
 
           <div className="md:col-span-2">
             <div className="flex items-center gap-3 text-white font-heading font-bold text-xl mb-4 cursor-pointer" onClick={() => handleNavigate('landing')}>
-              <div className="w-8 h-8 bg-linear-to-br from-white to-accent-gold rounded flex items-center justify-center text-primary font-extrabold font-heading">
-                H
+              <div className="h-12 w-12 rounded-md bg-white flex items-center justify-center overflow-hidden">
+                <Image
+                  src="/assets/lokalator_logo_centered.png"
+                  alt="Logo Lokalator"
+                  width={48}
+                  height={48}
+                  className="brand-logo h-full w-full scale-90 object-contain"
+                />
               </div>
-              <span>Heritage<span className="text-accent-gold">Guard</span></span>
+              <span>Lokalator</span>
             </div>
             <p className="text-xs text-white/70 leading-relaxed max-w-sm mb-4">
               Menjaga warisan budaya tutur kata luhur nusantara. Platform penerjemah dan penganalisis tingkat kesopanan bahasa Jawa & Madura presisi berbasis NLP AI.
@@ -2082,7 +2098,8 @@ export default function HeritageGuardApp() {
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('landing')}>Beranda</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('translator')}>Penerjemah</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('doc-translator')}>Terjemah Dokumen</li>
-              <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('insights')}>Statistik Insights</li>
+              <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('detector')}>Deteksi Kesopanan</li>
+              <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('insights')}>Analitik Bahasa</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('about')}>Tentang</li>
             </ul>
           </div>
@@ -2102,13 +2119,145 @@ export default function HeritageGuardApp() {
         </div>
 
         <div className="max-w-6xl mx-auto pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center text-xs text-white/60 gap-4 text-center">
-          <div>&copy; 2026 HeritageGuard. Final Project Kecerdasan Artifisial dan Machine Learning Kelompok 7.</div>
+          <div>&copy; 2026 Lokalator. Final Project Kecerdasan Artifisial dan Machine Learning Kelompok 7.</div>
           <div className="flex gap-4">
-            <a href="#" className="hover:text-accent-gold transition-colors">Kebijakan Privasi</a>
-            <a href="#" className="hover:text-accent-gold transition-colors">Syarat Ketentuan</a>
+            <button type="button" onClick={() => handleNavigate('privacy')} className="hover:text-accent-gold transition-colors cursor-pointer">Kebijakan Privasi</button>
+            <button type="button" onClick={() => handleNavigate('terms')} className="hover:text-accent-gold transition-colors cursor-pointer">Syarat Ketentuan</button>
           </div>
         </div>
       </footer>
+
+      {/* Floating Chatbot Widget */}
+      {!chatWidgetOpen && (
+        <button
+          type="button"
+          onClick={() => setChatWidgetOpen(true)}
+          className="fixed bottom-5 right-5 z-50 h-16 w-16 rounded-full bg-primary text-white shadow-premium border border-white/20 flex items-center justify-center hover:bg-primary-light hover:-translate-y-0.5 smooth-transition cursor-pointer dark:border-white/15 dark:shadow-[0_20px_45px_rgba(0,0,0,0.55)]"
+          title="Buka Chatbot AI"
+          aria-label="Buka Chatbot AI"
+        >
+          <MessageCircle size={26} />
+        </button>
+      )}
+
+      {chatWidgetOpen && (
+        <div
+          className={`fixed z-50 bottom-2 md:bottom-3 h-[calc(100vh-1rem)] md:h-[calc(100vh-1.5rem)] bg-card-bg border border-border-color rounded-2xl shadow-premium flex flex-col overflow-hidden ${
+            chatExpanded
+              ? 'left-4 right-4 md:left-1/2 md:right-auto md:w-[min(920px,calc(100vw-3rem))] md:-translate-x-1/2'
+              : 'left-4 right-4 md:left-auto md:right-6 md:w-[420px]'
+          }`}
+        >
+          <div className="bg-primary text-white px-4 py-3 flex items-center justify-between gap-3 dark:bg-[#0B0F0D] dark:border-b dark:border-border-color">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
+                <Image
+                  src="/assets/lokalator_logo_centered.png"
+                  alt="Logo Lokalator"
+                  width={36}
+                  height={36}
+                  className="brand-logo h-full w-full scale-90 object-contain"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="font-heading font-bold text-sm leading-tight">Lokalator AI</div>
+                <div className="text-[11px] text-white/75 truncate">Chatbot bahasa Jawa, Madura, dan Indonesia</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setChatExpanded((value) => !value)}
+                className="p-2 rounded-lg hover:bg-white/10 smooth-transition cursor-pointer"
+                title={chatExpanded ? 'Perkecil chatbot' : 'Perbesar chatbot'}
+                aria-label={chatExpanded ? 'Perkecil chatbot' : 'Perbesar chatbot'}
+              >
+                {chatExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChatWidgetOpen(false);
+                  setChatExpanded(false);
+                }}
+                className="p-2 rounded-lg hover:bg-white/10 smooth-transition cursor-pointer"
+                title="Tutup chatbot"
+                aria-label="Tutup chatbot"
+              >
+                <X size={17} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+            {chatMessages.length === 0 && (
+              <div className="text-center text-text-muted py-8">
+                <Image
+                  src="/assets/lokalator_logo_centered.png"
+                  alt="Logo Lokalator"
+                  width={112}
+                  height={112}
+                  className="brand-logo mx-auto mb-4 h-28 w-28 object-contain opacity-100"
+                />
+                <p className="text-sm">Mulai percakapan dengan mengetik pesan di bawah.</p>
+                <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                  {['Ajari aku bahasa Jawa!', 'Piye kabare?', 'Apa itu Krama Alus?', 'Sengko\' terro belajar Madura'].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => setChatInput(suggestion)}
+                      className="text-xs bg-primary/5 border border-primary/10 text-primary px-3 py-1.5 rounded-full hover:bg-primary/10 cursor-pointer smooth-transition"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                  msg.role === 'user'
+                    ? 'bg-primary text-white rounded-br-md'
+                    : 'bg-neutral-light text-text-dark rounded-bl-md border border-border-color'
+                }`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex justify-start">
+                <div className="bg-neutral-light border border-border-color px-4 py-3 rounded-2xl rounded-bl-md text-sm text-text-muted">
+                  <span className="animate-pulse">Mengetik...</span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="border-t border-border-color p-4">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
+                placeholder="Ketik pesan..."
+                className="flex-1 min-w-0 bg-white border border-border-color rounded-xl px-4 py-3 text-sm text-text-dark placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary smooth-transition"
+              />
+              <button
+                type="button"
+                onClick={handleSendChat}
+                disabled={chatLoading || !chatInput.trim()}
+                className="bg-primary hover:bg-primary-light disabled:bg-gray-300 text-white px-4 py-3 rounded-xl flex items-center gap-2 font-semibold text-sm cursor-pointer smooth-transition disabled:cursor-not-allowed"
+                aria-label="Kirim pesan"
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Toast Notification */}
       {toastMsg && (

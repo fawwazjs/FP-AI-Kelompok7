@@ -1,4 +1,4 @@
-# HeritageGuard Gemini AI Service
+# Lokalator Gemini AI Service
 # Provides LLM-powered translation fallback and chatbot functionality.
 
 import html
@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 import httpx
 
-logger = logging.getLogger("heritageguard.gemini")
+logger = logging.getLogger("lokalator.gemini")
 
 def _load_local_env() -> None:
     env_path = Path(__file__).resolve().parents[1] / ".env"
@@ -609,7 +609,7 @@ def translate_with_context_api(
 
 # --- Chatbot ---
 
-CHATBOT_SYSTEM_PROMPT = """Kamu adalah HeritageGuard AI, asisten cerdas untuk pelestarian bahasa daerah Indonesia. Kamu fasih berbahasa Indonesia, Jawa (Ngoko & Krama), dan Madura (Enja-Iya & Engghi-Bhanten).
+CHATBOT_SYSTEM_PROMPT = """Kamu adalah Lokalator AI, asisten cerdas untuk pelestarian bahasa daerah Indonesia. Kamu fasih berbahasa Indonesia, Jawa (Ngoko & Krama), dan Madura (Enja-Iya & Engghi-Bhanten).
 
 Kemampuanmu:
 - Menjawab pertanyaan tentang budaya Jawa dan Madura
@@ -659,7 +659,7 @@ def chat_with_gemini(message: str, history: list[dict] | None = None) -> str | N
     })
     contents.append({
         "role": "model",
-        "parts": [{"text": "Baik, saya HeritageGuard AI. Saya siap membantu Anda dengan bahasa Jawa dan Madura. Silakan bertanya atau berbicara dalam bahasa apapun — Indonesia, Jawa, atau Madura."}]
+        "parts": [{"text": "Baik, saya Lokalator AI. Saya siap membantu Anda dengan bahasa Jawa dan Madura. Silakan bertanya atau berbicara dalam bahasa apapun — Indonesia, Jawa, atau Madura."}]
     })
 
     # Append conversation history.

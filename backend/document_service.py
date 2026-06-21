@@ -1,4 +1,4 @@
-# HeritageGuard Document Parsing & Reconstruction Engine
+# Lokalator Document Parsing & Reconstruction Engine
 # Handles PDF (PyMuPDF), DOCX (python-docx), legacy DOC extraction, and TXT.
 
 import re
@@ -82,7 +82,7 @@ def _write_translated_pdf(output_path: str, translated_text: str):
     y = 56
     line_height = 14
 
-    page.insert_text((margin_x, 34), "HeritageGuard Document Translation", fontsize=13)
+    page.insert_text((margin_x, 34), "Lokalator Document Translation", fontsize=13)
     for paragraph in translated_text.split("\n"):
         wrapped = textwrap.wrap(paragraph, width=88) or [""]
         for line in wrapped:
@@ -132,7 +132,7 @@ def process_and_translate_docx(
 
     source_doc = docx.Document(input_path)
     translated_doc = docx.Document()
-    translated_doc.add_heading("HeritageGuard Document Translation", 0)
+    translated_doc.add_heading("Lokalator Document Translation", 0)
 
     source_blocks = []
 

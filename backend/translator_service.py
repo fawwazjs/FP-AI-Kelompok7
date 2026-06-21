@@ -1,4 +1,4 @@
-# HeritageGuard AI Translator and Politeness Service
+# Lokalator AI Translator and Politeness Service
 # Simulates MarianMT, IndoBERT, and Random Forest Classifier outputs.
 
 import re

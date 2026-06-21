@@ -1,4 +1,4 @@
-# HeritageGuard RAG (Retrieval-Augmented Generation) Service
+# Lokalator RAG (Retrieval-Augmented Generation) Service
 # Uses sentence-transformers + ChromaDB to ground Gemini responses in local dataset.
 
 import csv
@@ -9,7 +9,7 @@ import re
 import threading
 from pathlib import Path
 
-logger = logging.getLogger("heritageguard.rag")
+logger = logging.getLogger("lokalator.rag")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATASET_DIR = BASE_DIR / "Dataset"
@@ -50,7 +50,7 @@ def _get_collection():
         PERSIST_DIR.mkdir(parents=True, exist_ok=True)
         chroma_client = chromadb.PersistentClient(path=str(PERSIST_DIR))
         _chroma_collection = chroma_client.get_or_create_collection(
-            name="heritageguard_knowledge",
+            name="lokalator_knowledge",
             metadata={"hnsw:space": "cosine"}
         )
 
@@ -319,7 +319,7 @@ if __name__ == "__main__":
     Usage: python -m backend.rag_service
     """
     import time
-    print("Building HeritageGuard RAG knowledge base...")
+    print("Building Lokalator RAG knowledge base...")
     start = time.time()
     stats = get_stats()
     elapsed = time.time() - start
