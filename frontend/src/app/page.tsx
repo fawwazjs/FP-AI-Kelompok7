@@ -338,27 +338,27 @@ export default function LokalatorApp() {
   const [loadingDetect, setLoadingDetect] = useState(false);
 
   // --- CHATBOT STATE ---
-  const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>([]);
+  const defaultChatMessages = [{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }];
+  const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>(() => {
+    if (typeof window === 'undefined') return defaultChatMessages;
+
+    const savedChat = localStorage.getItem('lokalator_chat_history');
+    if (!savedChat) return defaultChatMessages;
+
+    try {
+      const parsed = JSON.parse(savedChat);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : defaultChatMessages;
+    } catch {
+      return defaultChatMessages;
+    }
+  });
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Initialize and persist chatbot state to prevent loss on refresh
-  useEffect(() => {
-    const savedChat = localStorage.getItem('lokalator_chat_history');
-    if (savedChat) {
-      try {
-        setChatMessages(JSON.parse(savedChat));
-      } catch {
-        setChatMessages([{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }]);
-      }
-    } else {
-      setChatMessages([{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }]);
-    }
-  }, []);
-
+  // Persist chatbot state to prevent loss on refresh.
   useEffect(() => {
     if (chatMessages.length > 0) {
       localStorage.setItem('lokalator_chat_history', JSON.stringify(chatMessages));
@@ -2060,25 +2060,60 @@ export default function LokalatorApp() {
           <div className="text-center max-w-2xl mx-auto mb-10">
             <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Dokumen Legal</span>
             <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Kebijakan Privasi</h1>
-            <p className="text-text-medium text-sm md:text-base leading-relaxed">Template kebijakan privasi Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
+            <p className="text-text-medium text-sm md:text-base leading-relaxed">Terakhir diperbarui: 23 Juni 2026. Kebijakan ini menjelaskan bagaimana Lokalator memproses data saat Anda menggunakan fitur penerjemahan, deteksi bahasa, chatbot, dan terjemah dokumen.</p>
           </div>
 
           <div className="bg-card-bg border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Data yang Dikumpulkan</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Tuliskan jenis data yang diproses, misalnya teks terjemahan, metadata penggunaan, dan data unggahan dokumen.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Ruang Lingkup</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Kebijakan Privasi ini berlaku untuk penggunaan Lokalator sebagai aplikasi web pembelajaran dan penerjemahan bahasa daerah, khususnya Bahasa Indonesia, Jawa, dan Madura. Kebijakan ini mencakup teks yang Anda masukkan, dokumen yang Anda unggah, percakapan dengan chatbot, serta data penggunaan terbatas yang diperlukan untuk menjalankan layanan.</p>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Penggunaan Data</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Jelaskan bagaimana data digunakan untuk menjalankan fitur penerjemahan, deteksi kesopanan, analitik, dan peningkatan kualitas layanan.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Data yang Diproses</h2>
+              <p className="text-sm text-text-medium leading-relaxed mb-3">Saat Anda menggunakan Lokalator, kami dapat memproses beberapa jenis data berikut sesuai fitur yang digunakan:</p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-text-medium leading-relaxed">
+                <li>Teks yang Anda ketik untuk diterjemahkan atau dianalisis tingkat bahasa dan kesopanannya.</li>
+                <li>Dokumen yang Anda unggah untuk diterjemahkan, termasuk nama berkas, ukuran berkas, jenis berkas, dan isi teks yang dapat diekstrak dari dokumen tersebut.</li>
+                <li>Pesan yang Anda kirim ke chatbot serta konteks percakapan terbatas agar chatbot dapat merespons secara relevan.</li>
+                <li>Pilihan bahasa sumber, bahasa tujuan, tingkat tutur, hasil terjemahan, dan informasi ringkas yang diperlukan untuk menampilkan hasil layanan.</li>
+                <li>Statistik penggunaan agregat, seperti jumlah kosakata yang muncul, pasangan bahasa yang digunakan, dan jumlah proses terjemahan untuk kebutuhan analitik aplikasi.</li>
+              </ul>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Penyimpanan dan Keamanan</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Isi kebijakan retensi, penghapusan dokumen sementara, dan langkah keamanan yang diterapkan.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Cara Data Digunakan</h2>
+              <p className="text-sm text-text-medium leading-relaxed mb-3">Data digunakan hanya sejauh diperlukan untuk menyediakan dan menjaga kualitas fitur Lokalator, termasuk untuk:</p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-text-medium leading-relaxed">
+                <li>menghasilkan terjemahan teks dan dokumen;</li>
+                <li>mendeteksi bahasa, ragam tutur, dan tingkat kesopanan per kata atau per kalimat;</li>
+                <li>menampilkan pratinjau, unduhan, dan ringkasan hasil terjemahan dokumen;</li>
+                <li>menjalankan chatbot pembelajaran bahasa daerah;</li>
+                <li>menyusun statistik kosakata dan tren penggunaan secara agregat; dan</li>
+                <li>memantau gangguan layanan, mencegah penyalahgunaan, serta memperbaiki akurasi fitur.</li>
+              </ul>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Kontak</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Tambahkan kontak resmi pengelola Lokalator untuk permintaan privasi atau penghapusan data.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Pemrosesan AI dan Pihak Ketiga</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Beberapa fitur Lokalator dapat menggunakan layanan AI atau penerjemahan pihak ketiga untuk membantu memahami konteks kalimat, ragam tutur, dan percakapan chatbot. Jika fitur tersebut digunakan, teks yang relevan dapat dikirim ke penyedia layanan tersebut untuk menghasilkan respons. Kami tidak menyarankan Anda memasukkan data pribadi yang sangat sensitif, rahasia bisnis, informasi keuangan, data kesehatan, atau dokumen yang tidak berhak Anda unggah.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">5. Penyimpanan dan Penghapusan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Dokumen yang diunggah diproses untuk mengekstrak teks, membuat hasil terjemahan, dan menyediakan unduhan. Berkas sementara dan hasil terjemahan dokumen dapat dihapus otomatis setelah tidak lagi diperlukan untuk proses tersebut. Catatan operasional dan statistik agregat dapat disimpan lebih lama untuk menjaga kualitas layanan, tetapi kami berupaya membatasi informasi yang disimpan agar tidak melebihi kebutuhan aplikasi.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">6. Keamanan Data</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Lokalator menerapkan pembatasan akses dan langkah perlindungan yang wajar untuk menjaga data pengguna. Meski demikian, tidak ada sistem digital yang sepenuhnya bebas risiko. Pengguna bertanggung jawab memastikan bahwa teks atau dokumen yang dimasukkan tidak memuat informasi yang seharusnya tidak dibagikan ke layanan daring.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">7. Hak Pengguna</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Anda dapat berhenti menggunakan layanan kapan saja. Jika tersedia kanal resmi pengelola Lokalator, Anda dapat mengajukan pertanyaan, permintaan koreksi, atau permintaan penghapusan data yang masih tersimpan dan dapat diidentifikasi secara wajar. Permintaan dapat ditolak atau dibatasi jika data sudah berbentuk agregat, tidak lagi dapat dikaitkan dengan pengguna tertentu, atau masih diperlukan untuk alasan keamanan dan kewajiban yang berlaku.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">8. Perubahan Kebijakan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Kebijakan Privasi dapat diperbarui agar sesuai dengan perubahan fitur, kebutuhan operasional, atau ketentuan yang berlaku. Versi terbaru berlaku sejak ditampilkan pada halaman ini.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">9. Kontak</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Untuk pertanyaan terkait privasi atau penggunaan data, hubungi pengelola Lokalator melalui kanal resmi yang disediakan oleh tim pengembang atau instansi penyelenggara aplikasi.</p>
             </section>
           </div>
         </main>
@@ -2090,25 +2125,66 @@ export default function LokalatorApp() {
           <div className="text-center max-w-2xl mx-auto mb-10">
             <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Dokumen Legal</span>
             <h1 className="font-heading font-extrabold text-3xl md:text-4xl text-primary mb-3">Syarat Ketentuan</h1>
-            <p className="text-text-medium text-sm md:text-base leading-relaxed">Template syarat ketentuan penggunaan Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
+            <p className="text-text-medium text-sm md:text-base leading-relaxed">Terakhir diperbarui: 23 Juni 2026. Dengan menggunakan Lokalator, Anda menyetujui ketentuan penggunaan berikut.</p>
           </div>
 
           <div className="bg-card-bg border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Ketentuan Penggunaan</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Tuliskan aturan dasar penggunaan fitur penerjemah, detektor kesopanan, chatbot, dan pemrosesan dokumen.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Tentang Layanan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Lokalator adalah aplikasi web untuk membantu pengguna menerjemahkan teks dan dokumen, mempelajari kosakata bahasa daerah, menganalisis ragam tutur, serta berinteraksi dengan chatbot pembelajaran. Layanan ini berfokus pada Bahasa Indonesia, Jawa, dan Madura, termasuk variasi tingkat tutur yang tersedia di aplikasi.</p>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Batasan Layanan</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Jelaskan bahwa hasil AI dan kamus lokal bersifat bantuan, dapat memiliki keterbatasan, dan perlu verifikasi untuk konteks resmi.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">2. Penggunaan yang Diperbolehkan</h2>
+              <p className="text-sm text-text-medium leading-relaxed mb-3">Anda dapat menggunakan Lokalator untuk kebutuhan belajar, eksplorasi bahasa, penerjemahan awal, penyusunan contoh kalimat, dan analisis tingkat tutur. Saat menggunakan layanan, Anda setuju untuk:</p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-text-medium leading-relaxed">
+                <li>memasukkan teks atau dokumen yang Anda miliki atau berhak untuk gunakan;</li>
+                <li>memeriksa kembali hasil terjemahan sebelum digunakan dalam konteks penting;</li>
+                <li>menggunakan fitur secara wajar dan tidak mengganggu ketersediaan layanan; dan</li>
+                <li>menghormati norma budaya, hak cipta, privasi, serta hukum yang berlaku.</li>
+              </ul>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Hak Kekayaan Intelektual</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Isi ketentuan kepemilikan merek, aset, dataset, kode, dan konten yang dihasilkan atau diunggah pengguna.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">3. Batasan Hasil Terjemahan dan Analisis</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Hasil terjemahan, deteksi bahasa, deteksi kesopanan, penjelasan linguistik, dan respons chatbot bersifat bantuan. Bahasa daerah memiliki variasi wilayah, konteks sosial, dan pilihan kata yang dapat memengaruhi makna. Karena itu, hasil Lokalator tidak boleh dianggap sebagai terjemahan tersumpah, nasihat hukum, keputusan resmi, atau rujukan tunggal untuk komunikasi yang berdampak besar tanpa verifikasi manusia yang kompeten.</p>
             </section>
             <section>
-              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Perubahan Ketentuan</h2>
-              <p className="text-sm text-text-medium leading-relaxed">Tambahkan mekanisme pembaruan syarat ketentuan dan tanggal berlaku dokumen.</p>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">4. Pemrosesan Dokumen</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Jika Anda mengunggah dokumen, Lokalator akan memproses dokumen tersebut untuk membaca teks, menerjemahkan konten yang dapat diproses, menampilkan pratinjau, dan menyediakan hasil unduhan. Format, tata letak, gambar, tabel, atau elemen khusus tertentu mungkin tidak selalu dipertahankan sempurna. Anda bertanggung jawab memastikan dokumen yang diunggah tidak melanggar hak pihak lain dan tidak berisi informasi yang tidak semestinya dibagikan.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">5. Chatbot dan Konten AI</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Chatbot Lokalator dirancang untuk membantu pembelajaran bahasa dan konteks budaya. Respons chatbot dapat keliru, tidak lengkap, atau tidak sesuai untuk seluruh dialek dan situasi sosial. Gunakan respons tersebut sebagai bahan bantu, bukan sebagai keputusan final. Jangan menggunakan chatbot untuk menghasilkan, menyebarkan, atau meminta konten yang melanggar hukum, merugikan orang lain, atau melanggar hak pihak ketiga.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">6. Larangan Penggunaan</h2>
+              <p className="text-sm text-text-medium leading-relaxed mb-3">Anda tidak diperbolehkan menggunakan Lokalator untuk:</p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-text-medium leading-relaxed">
+                <li>mengunggah atau memproses konten yang melanggar hukum, mengandung kekerasan eksplisit yang tidak perlu, pelecehan, ujaran kebencian, atau eksploitasi;</li>
+                <li>melanggar hak cipta, merek, rahasia dagang, privasi, atau hak lain milik pihak ketiga;</li>
+                <li>mencoba merusak, membebani, mengakses tanpa izin, atau mengganggu layanan;</li>
+                <li>menggunakan hasil layanan untuk menipu, memalsukan identitas, atau menyebarkan informasi yang menyesatkan; dan</li>
+                <li>mengunggah berkas berbahaya atau konten yang dirancang untuk mengganggu sistem digital.</li>
+              </ul>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">7. Hak atas Konten</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Anda tetap memiliki hak atas teks dan dokumen yang Anda masukkan ke Lokalator. Dengan menggunakan layanan, Anda memberi izin kepada Lokalator untuk memproses konten tersebut sejauh diperlukan untuk menjalankan fitur yang Anda minta, menampilkan hasil, menjaga keamanan, dan meningkatkan kualitas layanan secara agregat. Nama, logo, desain, materi aplikasi, dan elemen layanan Lokalator tetap menjadi milik pengelola atau pihak yang memberikan lisensi.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">8. Ketersediaan Layanan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Lokalator dapat mengalami gangguan, pembatasan fitur, perubahan kualitas respons, atau penghentian sementara karena pemeliharaan, keterbatasan layanan pendukung, atau alasan operasional lainnya. Pengelola berupaya menjaga layanan tetap tersedia, tetapi tidak menjamin bahwa layanan akan selalu bebas gangguan atau selalu sesuai untuk setiap kebutuhan pengguna.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">9. Tanggung Jawab Pengguna</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Anda bertanggung jawab atas teks, dokumen, dan penggunaan hasil yang Anda lakukan melalui Lokalator. Pengelola tidak bertanggung jawab atas kerugian yang timbul dari penggunaan hasil terjemahan atau analisis tanpa pemeriksaan yang memadai, terutama untuk dokumen resmi, transaksi, pendidikan formal, publikasi, atau komunikasi yang memiliki konsekuensi hukum dan sosial.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">10. Perubahan Ketentuan</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Syarat Ketentuan ini dapat diperbarui sesuai perkembangan fitur, kebijakan layanan, atau ketentuan yang berlaku. Versi terbaru berlaku sejak ditampilkan pada halaman ini. Jika Anda tetap menggunakan Lokalator setelah perubahan berlaku, penggunaan tersebut dianggap sebagai persetujuan atas ketentuan terbaru.</p>
+            </section>
+            <section>
+              <h2 className="font-heading font-bold text-lg text-primary mb-2">11. Kontak</h2>
+              <p className="text-sm text-text-medium leading-relaxed">Untuk pertanyaan mengenai ketentuan penggunaan, hubungi pengelola Lokalator melalui kanal resmi yang disediakan oleh tim pengembang atau instansi penyelenggara aplikasi.</p>
             </section>
           </div>
         </main>
