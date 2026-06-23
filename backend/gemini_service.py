@@ -311,7 +311,11 @@ Jawab HANYA dalam format JSON berikut (tanpa markdown, tanpa penjelasan lain):
 
 Untuk explanation, jelaskan singkat dalam Bahasa Indonesia (1-2 kalimat).
 ngokoPercentage + kramaPercentage harus = 100.
-Untuk level per kata: gunakan "netral" untuk Indonesia/Asing, "ngoko"/"krama"/"krama inggil" untuk Jawa, "enja-iya"/"engghi-bhunten" untuk Madura."""
+Untuk level per kata sesuaikan dengan konteks:
+- Indonesia: gunakan "formal", "informal", atau "netral"
+- Jawa: gunakan "ngoko lugu", "ngoko alus", "krama lugu", "krama alus", atau "krama inggil"
+- Madura: gunakan "enja-iya", "engghi-enten", atau "engghi-bhunten"
+- Asing: gunakan "netral" """
 
     result = _call_gemini(prompt, temperature=0.1, max_tokens=2048)
     if not result:
@@ -629,6 +633,7 @@ Panduan:
 BATASAN PENTING:
 - Kamu HANYA boleh membahas topik seputar Bahasa Indonesia, Bahasa Jawa, dan Bahasa Madura.
 - Termasuk: kosakata, tata bahasa, budaya Jawa/Madura, tradisi, sastra daerah, tingkat tutur, terjemahan, dan pembelajaran bahasa.
+- TOLAK SECARA TEGAS permintaan untuk membuat kode pemrograman (coding), hal tidak senonoh (NSFW), atau ujaran kebencian.
 - Jika pengguna bertanya di luar topik tersebut (misalnya politik, teknologi umum, matematika, dll), tolak dengan sopan dan arahkan kembali ke topik bahasa/budaya daerah.
 - Contoh penolakan: "Maaf, saya hanya bisa membantu seputar Bahasa Indonesia, Jawa, dan Madura beserta budayanya. Ada yang ingin Anda tanyakan tentang bahasa daerah?" """
 

@@ -74,6 +74,30 @@ class TranslationPipelineTests(unittest.TestCase):
                 self.assertEqual(result["language"], language)
                 self.assertEqual(result["register"], register)
 
+    def test_register_detection_is_independent_per_word(self):
+        result = detect_language_and_register("piro pira pinten")
+
+        self.assertEqual(
+            [(item["word"], item["language"], item["level"]) for item in result["wordAnalysis"]],
+            [
+                ("piro", "Jawa", "ngoko"),
+                ("pira", "Jawa", "ngoko"),
+                ("pinten", "Jawa", "krama"),
+            ],
+        )
+        self.assertEqual(result["register"], "campuran ngoko-krama")
+
+    def test_register_detection_preserves_multiple_candidates(self):
+        result = detect_language_and_register("sak niki tello aku")
+        by_word = {item["word"]: item for item in result["wordAnalysis"]}
+
+        self.assertIn({"language": "Jawa", "level": "ngoko"}, by_word["sak"]["candidates"])
+        self.assertIn({"language": "Madura", "level": "netral"}, by_word["sak"]["candidates"])
+        self.assertEqual(by_word["niki"]["candidates"], [{"language": "Jawa", "level": "ngoko"}])
+        self.assertEqual(by_word["tello"]["candidates"], [{"language": "Madura", "level": "netral"}])
+        self.assertIn({"language": "Jawa", "level": "ngoko"}, by_word["aku"]["candidates"])
+        self.assertIn({"language": "Indonesia", "level": "netral"}, by_word["aku"]["candidates"])
+
     def test_indonesian_affix_translation_to_javanese(self):
         text = "cara caranya memperlakukannya baikknya jalan jalankan dijalan"
         result = translate_and_classify(text, "id", "jv", "high")

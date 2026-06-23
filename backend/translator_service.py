@@ -5,6 +5,8 @@ import re
 import os
 import json
 import unicodedata
+import csv
+from collections import Counter
 from pathlib import Path
 
 SUPPORTED_LANGUAGES = {"id", "jv", "mad"}
@@ -804,7 +806,189 @@ if os.path.exists(sql_path):
     except Exception as e:
         pass
 
-def detect_language_and_register(text: str) -> dict:
+mad_neutral = set()
+
+def _tokenize_detector_text(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).lower().replace("’", "'")
+    normalized = re.sub(r"[^\w\s'\-̀-ỹ]", " ", normalized, flags=re.UNICODE)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized.split() if normalized else []
+
+def _detector_variants(token: str) -> set[str]:
+    variants = set(_key_variants(token))
+    variants.update(_key_variants(token.replace("'", "")))
+    return {variant for variant in variants if variant}
+
+def _add_tokens(target: set[str], value: str):
+    for token in _tokenize_detector_text(value):
+        target.update(_detector_variants(token))
+
+def _load_detector_dictionary_terms():
+    for entry in ID_TO_JV.values():
+        high = entry.get("high", "")
+        low = entry.get("low", "")
+        if _normalize_text_key(high) == _normalize_text_key(low):
+            _add_tokens(jv_ngoko, low)
+        else:
+            _add_tokens(jv_krama_alus, high)
+            _add_tokens(jv_ngoko, low)
+    for entry in ID_TO_MAD.values():
+        high = entry.get("high", "")
+        low = entry.get("low", "")
+        if _normalize_text_key(high) == _normalize_text_key(low):
+            _add_tokens(mad_enja_iya, low)
+        else:
+            _add_tokens(mad_engghi_bhunten, high)
+            _add_tokens(mad_enja_iya, low)
+
+def _load_madura_headword_terms():
+    if not os.path.exists(sql_path):
+        return
+    try:
+        with open(sql_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip().rstrip(",;")
+                if not line.startswith("(") or not line.endswith(")"):
+                    continue
+                try:
+                    fields = next(csv.reader(
+                        [line[1:-1]],
+                        delimiter=",",
+                        quotechar="'",
+                        escapechar="\\",
+                        skipinitialspace=True,
+                    ))
+                except Exception:
+                    continue
+                if len(fields) < 2:
+                    continue
+                headword = fields[1].strip()
+                pos_tag = fields[7].strip() if len(fields) > 7 else "NULL"
+                has_local_orthography = bool(re.search(r"[̀-ỹ']", headword, flags=re.UNICODE))
+                has_pos_tag = pos_tag.upper() != "NULL" and bool(pos_tag)
+                if not (has_pos_tag or has_local_orthography):
+                    continue
+                for token in _tokenize_detector_text(headword):
+                    if len(token) > 2 and token not in {"the", "and", "for", "to", "of"}:
+                        mad_neutral.update(_detector_variants(token))
+    except Exception:
+        return
+
+_load_detector_dictionary_terms()
+_load_madura_headword_terms()
+
+# Manual high-confidence forms that often appear in short detector inputs.
+for token in ("piro", "pira", "sak", "saiki", "iki", "niku", "niki", "kok"):
+    _add_tokens(jv_ngoko, token)
+for token in ("pinten", "menika", "sakmenika"):
+    _add_tokens(jv_krama_alus, token)
+for token in ("tello", "tello'", "tellok"):
+    _add_tokens(mad_neutral, token)
+for token in ("aku", "jam"):
+    _add_tokens(indo_standard, token)
+
+LANGUAGE_ORDER = {"Jawa": 0, "Madura": 1, "Indonesia": 2, "Asing": 3}
+FOREIGN_STOPWORDS = {"i", "to", "the", "a", "an", "of", "and", "or", "is", "am", "are", "was", "were"}
+LEVEL_ORDER = {
+    "ngoko kasar": 0,
+    "ngoko lugu": 1,
+    "ngoko": 1,
+    "krama lugu": 2,
+    "krama alus": 3,
+    "krama": 3,
+    "krama inggil": 4,
+    "enja-iya": 5,
+    "engghi-enten": 6,
+    "engghi-bhunten": 7,
+    "informal": 8,
+    "netral": 9,
+}
+
+def _candidate_sort_key(candidate: dict) -> tuple[int, int, str]:
+    return (
+        LANGUAGE_ORDER.get(candidate["language"], 99),
+        LEVEL_ORDER.get(candidate["level"], 99),
+        candidate["level"],
+    )
+
+def _append_candidate(candidates: list[dict], language: str, level: str):
+    candidate = {"language": language, "level": level}
+    if (language, level) not in {(item["language"], item["level"]) for item in candidates}:
+        candidates.append(candidate)
+
+def _detector_candidates(token: str) -> list[dict]:
+    if token in FOREIGN_STOPWORDS:
+        return [{"language": "Asing", "level": "netral"}]
+
+    variants = _detector_variants(token)
+    candidates: list[dict] = []
+
+    if variants & (jv_kasar | {_strip_accents(item) for item in jv_kasar}):
+        _append_candidate(candidates, "Jawa", "ngoko kasar")
+    if variants & (jv_ngoko | jv_ngoko_core):
+        _append_candidate(candidates, "Jawa", "ngoko lugu")
+    if variants & jv_krama_lugu:
+        _append_candidate(candidates, "Jawa", "krama lugu")
+    if variants & (jv_krama_alus | jv_krama_core):
+        _append_candidate(candidates, "Jawa", "krama alus")
+    if variants & jv_krama_inggil_verbs:
+        _append_candidate(candidates, "Jawa", "krama inggil")
+
+    if variants & mad_enja_iya:
+        _append_candidate(candidates, "Madura", "enja-iya")
+    if variants & (mad_engghi_enten | mad_engghi_enten_core):
+        _append_candidate(candidates, "Madura", "engghi-enten")
+    if variants & (mad_engghi_bhunten | mad_engghi_bhunten_core):
+        _append_candidate(candidates, "Madura", "engghi-bhunten")
+    if variants & mad_neutral:
+        _append_candidate(candidates, "Madura", "netral")
+
+    if variants & indo_slang:
+        _append_candidate(candidates, "Indonesia", "informal")
+    if variants & indo_standard:
+        _append_candidate(candidates, "Indonesia", "netral")
+
+    if not candidates:
+        return [{"language": "Asing", "level": "netral"}]
+    return sorted(candidates, key=_candidate_sort_key)
+
+def _summarize_register(language: str, level_counts: Counter) -> str:
+    if language == "Jawa":
+        if level_counts[("Jawa", "ngoko kasar")]:
+            return "ngoko kasar"
+        high = (
+            level_counts[("Jawa", "krama lugu")]
+            + level_counts[("Jawa", "krama alus")]
+            + level_counts[("Jawa", "krama inggil")]
+        )
+        low = level_counts[("Jawa", "ngoko lugu")]
+        if high and low:
+            return "campuran ngoko-krama"
+        if level_counts[("Jawa", "krama inggil")]:
+            return "krama alus"
+        if high:
+            return "krama alus"
+        if low:
+            return "ngoko lugu"
+        return "tidak diketahui"
+
+    if language == "Madura":
+        if level_counts[("Madura", "engghi-bhunten")]:
+            return "Engghi-bhunten"
+        if level_counts[("Madura", "engghi-enten")]:
+            return "Engghi-enten"
+        if level_counts[("Madura", "enja-iya")]:
+            return "Enja-Iya"
+        if level_counts[("Madura", "netral")]:
+            return "netral"
+        return "tidak diketahui"
+
+    if language == "Indonesia":
+        return "informal" if level_counts[("Indonesia", "informal")] else "formal"
+
+    return "tidak diketahui"
+
+def _legacy_detect_language_and_register(text: str) -> dict:
     clean_text = re.sub(r"[^\w\s']", ' ', text.lower())
     clean_text = re.sub(r"\s+", ' ', clean_text).strip()
     words = clean_text.split()
@@ -987,6 +1171,134 @@ def detect_language_and_register(text: str) -> dict:
             ngoko_pct = 85.0
             krama_pct = 15.0
             
+    return {
+        "language": detected_lang,
+        "register": register,
+        "explanation": explanation,
+        "ngokoPercentage": ngoko_pct,
+        "kramaPercentage": krama_pct,
+        "wordAnalysis": word_analysis,
+    }
+
+def detect_language_and_register(text: str) -> dict:
+    words = _tokenize_detector_text(text)
+
+    if not words:
+        return {
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": "Teks kosong, sehingga bahasa dan tingkat tutur belum bisa dianalisis.",
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": [],
+        }
+
+    word_analysis = []
+    language_counts = Counter()
+    level_counts = Counter()
+
+    for word in words:
+        candidates = _detector_candidates(word)
+        evidence_candidates = [item for item in candidates if item["language"] != "Asing"]
+        display_candidates = evidence_candidates or candidates
+        language = " / ".join(dict.fromkeys(item["language"] for item in display_candidates))
+        level = " / ".join(dict.fromkeys(item["level"] for item in display_candidates))
+
+        word_analysis.append({
+            "word": word,
+            "language": language,
+            "level": level,
+            "candidates": display_candidates,
+        })
+
+        primary_by_language = {}
+        for candidate in evidence_candidates:
+            language = candidate["language"]
+            current = primary_by_language.get(language)
+            if current is None or (
+                current["level"] == "netral" and candidate["level"] != "netral"
+            ):
+                primary_by_language[language] = candidate
+
+        for candidate in primary_by_language.values():
+            language_counts[candidate["language"]] += 1
+            level_counts[(candidate["language"], candidate["level"])] += 1
+
+    regional_total = sum(
+        count
+        for (language, level), count in level_counts.items()
+        if language in {"Jawa", "Madura"} and level != "netral"
+    )
+    low_count = (
+        level_counts[("Jawa", "ngoko kasar")]
+        + level_counts[("Jawa", "ngoko lugu")]
+        + level_counts[("Madura", "enja-iya")]
+    )
+    high_count = (
+        level_counts[("Jawa", "krama lugu")]
+        + level_counts[("Jawa", "krama alus")]
+        + level_counts[("Jawa", "krama inggil")]
+        + level_counts[("Madura", "engghi-enten")]
+        + level_counts[("Madura", "engghi-bhunten")]
+    )
+    ngoko_pct = round((low_count / regional_total) * 100, 1) if regional_total else 0.0
+    krama_pct = round((high_count / regional_total) * 100, 1) if regional_total else 0.0
+
+    if not language_counts:
+        return {
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": (
+                "Tidak ada token yang cocok dengan leksikon lokal Indonesia, Jawa, atau Madura. "
+                "Setiap kata tetap ditandai asing/netral tanpa dipaksa ke salah satu bahasa."
+            ),
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": word_analysis,
+        }
+
+    total_words = len(words)
+    top_score = max(language_counts.values())
+    top_percentage = (top_score / total_words) * 100 if total_words else 0.0
+
+    top_languages = [language for language, count in language_counts.items() if count == top_score]
+
+    if len(top_languages) > 1:
+        return {
+            "language": "Tidak pasti",
+            "register": "ambigu",
+            "explanation": (
+                "Analisis per-kata menemukan kandidat dari beberapa bahasa dengan kekuatan seimbang. "
+                "Label tiap kata ditampilkan independen, termasuk kata yang punya lebih dari satu kandidat bahasa."
+            ),
+            "ngokoPercentage": ngoko_pct,
+            "kramaPercentage": krama_pct,
+            "wordAnalysis": word_analysis,
+        }
+
+    if top_percentage < 75.0:
+        return {
+            "language": "Tidak pasti",
+            "register": "tidak diketahui",
+            "explanation": (
+                f"Meskipun indikator terbanyak adalah bahasa {top_languages[0]} ({round(top_percentage, 1)}%), "
+                "sistem membutuhkan dominasi minimal 75% dari total kata untuk dapat menetapkan bahasa keseluruhan secara pasti."
+            ),
+            "ngokoPercentage": 0.0,
+            "kramaPercentage": 0.0,
+            "wordAnalysis": word_analysis,
+        }
+
+    detected_lang = top_languages[0]
+    register = _summarize_register(detected_lang, level_counts)
+    evidence_count = sum(language_counts.values())
+    detected_count = language_counts[detected_lang]
+    explanation = (
+        f"Bahasa dominan dihitung dari kandidat leksikal per kata: {detected_lang} "
+        f"muncul {detected_count} dari {evidence_count} kandidat lokal. "
+        "Kata yang cocok di lebih dari satu bahasa tetap menampilkan semua kandidatnya."
+    )
+
     return {
         "language": detected_lang,
         "register": register,

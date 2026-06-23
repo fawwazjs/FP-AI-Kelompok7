@@ -3,12 +3,14 @@ import os
 import re
 import time
 import zipfile
+from collections import Counter
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import init_db, get_db, TranslationLog, VocabularyStat
@@ -178,15 +180,25 @@ def _official_vocab_tokens(text: str, language: str):
             yield token, seen_vocab[token]
 
 def _record_vocab_usage(db: Session, text: str, language: str):
-    for token, meta in _official_vocab_tokens(text, language):
-        stat = db.query(VocabularyStat).filter(VocabularyStat.word == token).first()
+    token_counts = Counter(token for token, _ in _official_vocab_tokens(text, language))
+    if not token_counts:
+        return
+
+    existing_stats = {
+        stat.word: stat
+        for stat in db.query(VocabularyStat)
+        .filter(VocabularyStat.word.in_(token_counts.keys()))
+        .all()
+    }
+
+    for token, count in token_counts.items():
+        stat = existing_stats.get(token)
         if stat:
-            stat.count += 1
+            stat.count += count
             if stat.language not in REGIONAL_VOCAB:
                 stat.language = language
         else:
-            stat = VocabularyStat(word=token, language=language, count=1)
-            db.add(stat)
+            db.add(VocabularyStat(word=token, language=language, count=count))
 
 def _record_translation_vocabulary(
     db: Session,
@@ -197,6 +209,12 @@ def _record_translation_vocabulary(
 ):
     _record_vocab_usage(db, source_text, source_lang)
     _record_vocab_usage(db, translated_text, target_lang)
+
+def _commit_metadata(db: Session):
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 def _vocab_meta(word: str, language: str | None = None) -> dict[str, str] | None:
     if language in REGIONAL_VOCAB and word in REGIONAL_VOCAB[language]:
@@ -289,12 +307,31 @@ def detect_register(req: DetectionRequest):
         raise HTTPException(status_code=413, detail="Text too long")
 
     local_result = detect_language_and_register(req.text)
-    if local_result.get("language") != "Tidak pasti":
+    
+    # Jika sistem lokal sudah yakin (>= 75%), atau jika input tidak mengandung kata valid (hanya simbol/emoji),
+    # langsung kembalikan hasilnya tanpa memanggil AI.
+    if local_result.get("language") != "Tidak pasti" or not local_result.get("wordAnalysis"):
         return local_result
 
-    # Gemini is only used for uncertain local cases so normal detection stays fast.
+    # Jika sistem lokal tidak yakin (< 75%), panggil Gemini AI untuk dianalisis lebih dalam.
     gemini_result = detect_with_gemini(req.text)
-    return gemini_result or local_result
+    if not gemini_result:
+        return local_result
+
+    # Timpa analisis kata Gemini dengan kebenaran mutlak dari kamus lokal (koreksi halusinasi)
+    local_words = {
+        item["word"].lower(): item 
+        for item in local_result.get("wordAnalysis", []) 
+        if item.get("language") and item.get("language") != "Asing" and " / " not in item.get("language", "")
+    }
+
+    for item in gemini_result.get("wordAnalysis", []):
+        word_key = item.get("word", "").lower()
+        if word_key in local_words:
+            item["language"] = local_words[word_key]["language"]
+            item["level"] = local_words[word_key]["level"]
+
+    return gemini_result
 
 @app.post("/api/translate")
 def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
@@ -363,7 +400,7 @@ def translate_text(req: TranslationRequest, db: Session = Depends(get_db)):
         req.target_lang,
     )
     
-    db.commit()
+    _commit_metadata(db)
     return result
 
 @app.post("/api/translate-document")
@@ -401,6 +438,12 @@ def translate_document(
         else:
             summary = process_and_translate_txt(str(input_file_path), str(output_file_path), target_lang, source_lang, level)
 
+        if summary["words_translated"] == 0 or not summary.get("source_text", "").strip():
+            raise HTTPException(
+                status_code=400, 
+                detail="Tidak ada teks yang dapat diekstrak dari dokumen. Pastikan dokumen bukan hasil scan gambar (image-only)."
+            )
+
         log = TranslationLog(
             source_text=f"[document:{ext}:{size_bytes} bytes]",
             translated_text=f"[document-output:{output_ext}:{summary['words_translated']} words]",
@@ -419,7 +462,7 @@ def translate_document(
             translated_text,
             target_lang,
         )
-        db.commit()
+        _commit_metadata(db)
 
         preview_limit = 20000
         return {

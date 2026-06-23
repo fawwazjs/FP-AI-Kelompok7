@@ -260,8 +260,7 @@ export default function LokalatorApp() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window === 'undefined') return 'light';
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return savedTheme === 'dark' || (!savedTheme && systemPrefersDark) ? 'dark' : 'light';
+    return savedTheme === 'dark' ? 'dark' : 'light';
   });
 
   // Keep DOM theme class in sync with state.
@@ -329,7 +328,12 @@ export default function LokalatorApp() {
     explanation: string;
     ngokoPercentage?: number;
     kramaPercentage?: number;
-    wordAnalysis?: { word: string; language: string; level: string }[];
+    wordAnalysis?: {
+      word: string;
+      language: string;
+      level: string;
+      candidates?: { language: string; level: string }[];
+    }[];
   } | null>(null);
   const [loadingDetect, setLoadingDetect] = useState(false);
 
@@ -340,6 +344,26 @@ export default function LokalatorApp() {
   const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize and persist chatbot state to prevent loss on refresh
+  useEffect(() => {
+    const savedChat = localStorage.getItem('lokalator_chat_history');
+    if (savedChat) {
+      try {
+        setChatMessages(JSON.parse(savedChat));
+      } catch {
+        setChatMessages([{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }]);
+      }
+    } else {
+      setChatMessages([{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      localStorage.setItem('lokalator_chat_history', JSON.stringify(chatMessages));
+    }
+  }, [chatMessages]);
 
   // Auto cycle word of the day
   useEffect(() => {
@@ -636,11 +660,11 @@ export default function LokalatorApp() {
         const data = await response.json();
         setChatMessages(prev => [...prev, { role: 'assistant', text: data.response }]);
       } else {
-        const err = await response.json().catch(() => ({ detail: 'Chatbot tidak tersedia.' }));
-        setChatMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${err.detail || 'Terjadi kesalahan.'}` }]);
+        await response.json().catch(() => null);
+        setChatMessages(prev => [...prev, { role: 'assistant', text: 'Maaf chatbot AI Lokalator lagi tidak tersedia sekarang' }]);
       }
     } catch {
-      setChatMessages(prev => [...prev, { role: 'assistant', text: '⚠️ Tidak dapat terhubung ke server. Pastikan backend berjalan.' }]);
+      setChatMessages(prev => [...prev, { role: 'assistant', text: 'Maaf chatbot AI Lokalator lagi tidak tersedia sekarang' }]);
     } finally {
       setChatLoading(false);
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
@@ -1102,7 +1126,7 @@ export default function LokalatorApp() {
       {/* Navigation Bar */}
       <nav className="sticky top-0 z-50 bg-bg-cream/90 backdrop-blur-md border-b border-border-color px-6 py-4 grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center gap-6 smooth-transition">
         <div className="flex items-center gap-3 cursor-pointer justify-self-start" onClick={() => handleNavigate('landing')}>
-          <div className="h-[54px] w-[54px] rounded-lg flex items-center justify-center shadow-md overflow-hidden bg-white">
+          <div className="h-[54px] w-[54px] rounded-lg flex items-center justify-center shadow-md overflow-hidden bg-card-bg">
             <Image
               src="/assets/lokalator_logo_centered.png"
               alt="Logo Lokalator"
@@ -1148,7 +1172,7 @@ export default function LokalatorApp() {
           <button onClick={toggleTheme} className="text-text-medium hover:text-primary p-2 rounded-lg hover:bg-neutral-light cursor-pointer smooth-transition" title="Ubah Tema">
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <button className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
+          <button className="bg-primary hover:bg-primary-light text-on-primary font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
             Mulai Sekarang
           </button>
         </div>
@@ -1170,7 +1194,7 @@ export default function LokalatorApp() {
             <button onClick={toggleTheme} className="flex items-center justify-center gap-2 border border-border-color py-2.5 rounded-lg text-text-medium font-semibold text-sm w-full cursor-pointer smooth-transition hover:bg-neutral-light">
               {theme === 'light' ? <><Moon size={16} /> Mode Gelap</> : <><Sun size={16} /> Mode Terang</>}
             </button>
-            <button className="bg-primary text-white font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
+            <button className="bg-primary text-on-primary font-semibold text-sm py-2.5 rounded-lg w-full mt-2" onClick={() => handleNavigate('translator')}>
               Mulai Sekarang
             </button>
           </div>
@@ -1199,7 +1223,7 @@ export default function LokalatorApp() {
               Platform AI untuk menerjemahkan Bahasa Indonesia, Jawa, dan Madura sekaligus menganalisis tingkat kesopanan bahasa secara real-time.
             </p>
             <div className="flex gap-4">
-              <button className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
+              <button className="bg-primary hover:bg-primary-light text-on-primary font-semibold px-6 py-3 rounded-xl flex items-center gap-2 shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('translator')}>
                 Coba Terjemahkan <ChevronRight size={16} />
               </button>
               <button className="bg-transparent border border-accent-brown hover:bg-accent-brown/5 text-accent-brown font-semibold px-6 py-3 rounded-xl flex items-center gap-2 hover:-translate-y-0.5 smooth-transition cursor-pointer" onClick={() => handleNavigate('doc-translator')}>
@@ -1215,7 +1239,7 @@ export default function LokalatorApp() {
               <h2 className="font-heading font-bold text-3xl">Teknologi Preservasi Digital</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
                 <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-xl flex items-center justify-center text-primary mb-5">
                   <Languages size={20} />
                 </div>
@@ -1223,7 +1247,7 @@ export default function LokalatorApp() {
                 <p className="text-text-medium text-sm leading-relaxed">Menerjemahkan kata atau kalimat antar Bahasa Indonesia, Jawa (Ngoko & Krama), dan Madura secara presisi.</p>
               </div>
 
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
                 <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-xl flex items-center justify-center text-primary mb-5">
                   <TrendingUp size={20} />
                 </div>
@@ -1231,7 +1255,7 @@ export default function LokalatorApp() {
                 <p className="text-text-medium text-sm leading-relaxed">Menganalisis leksikon kosakata untuk mendeteksi level kesopanan (Ngoko/Krama atau Formal/Informal) kalimat input.</p>
               </div>
 
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
                 <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-xl flex items-center justify-center text-primary mb-5">
                   <FileText size={20} />
                 </div>
@@ -1239,7 +1263,7 @@ export default function LokalatorApp() {
                 <p className="text-text-medium text-sm leading-relaxed">Mendukung unggahan berkas PDF, DOC, DOCX, dan TXT, memproses terjemah secara massal dengan format yang tetap rapi.</p>
               </div>
 
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-xs hover:shadow-md hover:-translate-y-0.5 smooth-transition">
                 <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-xl flex items-center justify-center text-primary mb-5">
                   <BookOpen size={20} />
                 </div>
@@ -1251,7 +1275,7 @@ export default function LokalatorApp() {
 
           {/* How It Works */}
           <section className="max-w-6xl mx-auto px-6 py-12">
-            <div className="bg-white border border-border-color rounded-3xl p-8 md:p-12 shadow-xs relative overflow-hidden">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-8 md:p-12 shadow-xs relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-[4px] bg-gradient-to-r from-primary via-accent-brown to-accent-gold" />
               <div className="text-center mb-12">
                 <span className="text-accent-brown font-bold text-xs uppercase tracking-widest block mb-2">Alur Kerja</span>
@@ -1259,17 +1283,17 @@ export default function LokalatorApp() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">01</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 absolute -top-5 left-0 leading-none">01</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Unggah Teks / Berkas</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Ketik kalimat pada editor terjemahan online atau masukkan file PDF/DOCX/DOC/TXT ke dropzone dokumen.</p>
                 </div>
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">02</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 absolute -top-5 left-0 leading-none">02</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Analisis NLP Kontekstual</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Model AI mengklasifikasi tingkat kesopanan leksikon bahasa daerah dan memproses struktur gramatikal.</p>
                 </div>
                 <div className="relative">
-                  <span className="font-heading font-extrabold text-5xl text-primary/14 dark:text-[#65B29A]/40 absolute -top-5 left-0 leading-none">03</span>
+                  <span className="font-heading font-extrabold text-5xl text-primary/14 absolute -top-5 left-0 leading-none">03</span>
                   <h3 className="font-heading font-semibold text-lg text-primary mt-4 mb-2 relative z-10">Unduh & Lihat Panduan</h3>
                   <p className="text-text-medium text-sm leading-relaxed">Dapatkan hasil terjemahan lengkap dengan visualisasi persentase kesopanan serta penjelasan etika budayanya.</p>
                 </div>
@@ -1284,22 +1308,22 @@ export default function LokalatorApp() {
               <h2 className="font-heading font-bold text-3xl">Vitalitas & Preservasi Bahasa Ibu</h2>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-white hover:border-primary/20 hover:shadow-md smooth-transition">
+              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
                 <div className="font-heading font-extrabold text-4xl text-primary mb-2">80 Jt+</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Penutur Bahasa Jawa</div>
                 <div className="text-xs text-text-muted">Rumpun bahasa daerah penutur terbesar di Indonesia.</div>
               </div>
-              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-white hover:border-primary/20 hover:shadow-md smooth-transition">
+              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
                 <div className="font-heading font-extrabold text-4xl text-primary mb-2">7.3 Jt+</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Penutur Bahasa Madura</div>
                 <div className="text-xs text-text-muted">Banyak dituturkan di Madura dan Tapal Kuda Jatim.</div>
               </div>
-              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-white hover:border-primary/20 hover:shadow-md smooth-transition">
+              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
                 <div className="font-heading font-extrabold text-4xl text-primary mb-2">4 Kategori</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Tingkat Kesopanan</div>
                 <div className="text-xs text-text-muted">Deteksi linguistik: Ngoko, Krama, Formal, Informal.</div>
               </div>
-              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-white hover:border-primary/20 hover:shadow-md smooth-transition">
+              <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
                 <div className="font-heading font-extrabold text-4xl text-primary mb-2">98.2%</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Akurasi Semantik</div>
                 <div className="text-xs text-text-muted">Penilaian linguistik didukung kamus terverifikasi.</div>
@@ -1320,13 +1344,13 @@ export default function LokalatorApp() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
             {/* Split Screen Translator */}
-            <div className="lg:col-span-2 flex flex-col gap-6 bg-white border border-border-color rounded-2xl shadow-md overflow-hidden">
+            <div className="lg:col-span-2 flex flex-col gap-6 bg-card-bg border border-border-color rounded-2xl shadow-md overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border-color">
 
                 {/* Source Input Panel */}
                 <div className="flex flex-col min-h-[350px]">
                   <div className="bg-bg-cream px-5 py-3.5 border-b border-border-color flex justify-between items-center">
-                    <select className="bg-white border border-border-color rounded-md px-3 py-1.5 font-semibold text-sm text-primary outline-none" value={sourceLang} onChange={(e) => setSourceLang(e.target.value)}>
+                    <select className="bg-card-bg border border-border-color rounded-md px-3 py-1.5 font-semibold text-sm text-primary outline-none" value={sourceLang} onChange={(e) => setSourceLang(e.target.value)}>
                       <option value="id">Bahasa Indonesia</option>
                       <option value="jv">Bahasa Jawa</option>
                       <option value="mad">Bahasa Madura</option>
@@ -1347,13 +1371,13 @@ export default function LokalatorApp() {
                 <div className="flex flex-col min-h-[350px] relative" aria-busy={translationLoading}>
 
                   {/* Language swap button (Floating in middle for large screens) */}
-                  <button className="absolute -left-5 top-3 z-10 w-9 h-9 bg-white border border-border-color rounded-full shadow-md flex items-center justify-center text-accent-brown hover:bg-primary hover:text-white dark:hover:text-neutral-950 cursor-pointer smooth-transition hidden md:flex" onClick={handleSwapLanguages} title="Tukar bahasa">
+                  <button className="absolute -left-5 top-3 z-10 w-9 h-9 bg-card-bg border border-border-color rounded-full shadow-md flex items-center justify-center text-accent-brown hover:bg-primary hover:text-on-primary cursor-pointer smooth-transition hidden md:flex" onClick={handleSwapLanguages} title="Tukar bahasa">
                     <ArrowLeftRight size={14} />
                   </button>
 
                   <div className="bg-bg-cream px-5 py-3.5 border-b border-border-color flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                      <select className="bg-white border border-border-color rounded-md px-3 py-1.5 font-semibold text-sm text-primary outline-none" value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
+                      <select className="bg-card-bg border border-border-color rounded-md px-3 py-1.5 font-semibold text-sm text-primary outline-none" value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
                         <option value="id">Bahasa Indonesia</option>
                         <option value="jv">Bahasa Jawa</option>
                         <option value="mad">Bahasa Madura</option>
@@ -1361,11 +1385,11 @@ export default function LokalatorApp() {
 
                       {/* Politeness levels for regional output */}
                       {targetLang !== 'id' && (
-                        <div className="flex bg-white border border-border-color p-0.5 rounded-md text-xs font-semibold">
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
+                        <div className="flex bg-card-bg border border-border-color p-0.5 rounded-md text-xs font-semibold">
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'low' ? 'bg-primary text-on-primary' : 'text-text-medium'}`} onClick={() => setTargetLevel('low')}>
                             {targetLang === 'jv' ? 'Ngoko' : 'Enja-Iya'}
                           </button>
-                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-white' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
+                          <button className={`px-2 py-1 rounded-sm ${targetLevel === 'high' ? 'bg-primary text-on-primary' : 'text-text-medium'}`} onClick={() => setTargetLevel('high')}>
                             {targetLang === 'jv' ? 'Krama' : 'Engghi-Bh'}
                           </button>
                         </div>
@@ -1398,7 +1422,7 @@ export default function LokalatorApp() {
             <div className="flex flex-col gap-6">
 
               {/* Cultural Context */}
-              <div className="bg-white border-l-4 border-accent-brown border border-border-color rounded-r-2xl rounded-l-md p-6 shadow-md">
+              <div className="bg-card-bg border-l-4 border-accent-brown border border-border-color rounded-r-2xl rounded-l-md p-6 shadow-md">
                 <h4 className="font-heading font-bold text-sm text-accent-brown mb-2">Panduan Etika Budaya</h4>
                 <p className="text-xs text-text-medium leading-relaxed mb-4">{culturalContext}</p>
                 {suggestedVersion && (
@@ -1409,26 +1433,26 @@ export default function LokalatorApp() {
                 )}
               </div>
 
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-md">
                 <h4 className="font-heading font-bold text-sm text-primary mb-3">Kesopanan</h4>
                 <p className="text-xs text-text-medium mb-4">{politenessAnalysis.summary}</p>
                 <div className="space-y-3">
                   <div>
                     <div className="flex justify-between text-[11px] font-semibold mb-1">
-                      <span className="text-orange-600">Kasual</span>
+                      <span className="text-register-low">Kasual</span>
                       <span>{politenessAnalysis.ngoko}%</span>
                     </div>
                     <div className="h-2 rounded-full bg-neutral-light overflow-hidden">
-                      <div className="h-full bg-orange-500 smooth-transition" style={{ width: `${politenessAnalysis.ngoko}%` }} />
+                      <div className="h-full bg-register-low smooth-transition" style={{ width: `${politenessAnalysis.ngoko}%` }} />
                     </div>
                   </div>
                   <div>
                     <div className="flex justify-between text-[11px] font-semibold mb-1">
-                      <span className="text-blue-600">Sopan</span>
+                      <span className="text-register-high">Sopan</span>
                       <span>{politenessAnalysis.krama}%</span>
                     </div>
                     <div className="h-2 rounded-full bg-neutral-light overflow-hidden">
-                      <div className="h-full bg-blue-500 smooth-transition" style={{ width: `${politenessAnalysis.krama}%` }} />
+                      <div className="h-full bg-register-high smooth-transition" style={{ width: `${politenessAnalysis.krama}%` }} />
                     </div>
                   </div>
                 </div>
@@ -1449,7 +1473,7 @@ export default function LokalatorApp() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             {/* Input Box */}
-            <div className="lg:col-span-2 bg-white border border-border-color rounded-2xl shadow-md p-6">
+            <div className="lg:col-span-2 bg-card-bg border border-border-color rounded-2xl shadow-md p-6">
               <h3 className="font-heading font-semibold text-lg text-primary mb-4">Masukkan Teks</h3>
               <textarea
                 className="w-full min-h-[200px] p-4 border border-border-color rounded-xl outline-none resize-none text-base text-text-dark bg-transparent focus:border-primary smooth-transition"
@@ -1460,7 +1484,7 @@ export default function LokalatorApp() {
               <div className="flex justify-between items-center mt-4">
                 <span className="text-xs text-text-medium">{detectorInput.length} karakter</span>
                 <button
-                  className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-2.5 rounded-xl shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer disabled:bg-neutral-medium disabled:cursor-not-allowed"
+                  className="bg-primary hover:bg-primary-light text-on-primary font-semibold px-6 py-2.5 rounded-xl shadow-md hover:-translate-y-0.5 smooth-transition cursor-pointer disabled:bg-neutral-light disabled:cursor-not-allowed"
                   onClick={handleDetectRegister}
                   disabled={!detectorInput.trim() || loadingDetect}
                 >
@@ -1471,7 +1495,7 @@ export default function LokalatorApp() {
 
             {/* Results Panel */}
             <div className="flex flex-col gap-6">
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-md">
                 <h3 className="font-heading font-bold text-lg text-primary flex items-center gap-2 pb-3.5 border-b border-neutral-light mb-5">
                   Hasil Analisis
                 </h3>
@@ -1497,20 +1521,20 @@ export default function LokalatorApp() {
                         <div className="flex items-center gap-3">
                           <div className="flex-1">
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="text-orange-600 font-semibold">Kasual (Ngoko)</span>
+                              <span className="text-register-low font-semibold">Kasual (Ngoko)</span>
                               <span className="font-bold">{detectorResult.ngokoPercentage}%</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                              <div className="bg-orange-500 h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.ngokoPercentage}%` }} />
+                            <div className="w-full bg-neutral-light rounded-full h-2.5">
+                              <div className="bg-register-low h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.ngokoPercentage}%` }} />
                             </div>
                           </div>
                           <div className="flex-1">
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="text-blue-600 font-semibold">Sopan (Krama)</span>
+                              <span className="text-register-high font-semibold">Sopan (Krama)</span>
                               <span className="font-bold">{detectorResult.kramaPercentage}%</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                              <div className="bg-blue-500 h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.kramaPercentage}%` }} />
+                            <div className="w-full bg-neutral-light rounded-full h-2.5">
+                              <div className="bg-register-high h-2.5 rounded-full smooth-transition" style={{ width: `${detectorResult.kramaPercentage}%` }} />
                             </div>
                           </div>
                         </div>
@@ -1519,33 +1543,48 @@ export default function LokalatorApp() {
 
                     {/* Analisis Per-Kata */}
                     {detectorResult.wordAnalysis && detectorResult.wordAnalysis.length > 0 && (
-                      <div className="border-t border-neutral-light dark:border-gray-700 pt-3">
+                      <div className="border-t border-neutral-light pt-3">
                         <span className="text-xs text-text-muted font-bold block mb-3">ANALISIS PER-KATA:</span>
-                        <div className="bg-white dark:bg-gray-900 border border-border-color dark:border-gray-700 rounded-xl p-4">
+                        <div className="bg-card-bg border border-border-color rounded-xl p-4">
                           <div className="flex flex-wrap gap-2">
                             {detectorResult.wordAnalysis.map((wa, idx) => {
-                              const langColor = wa.language === 'Jawa' ? 'bg-green-100 border-green-300 dark:bg-green-900/40 dark:border-green-600'
-                                : wa.language === 'Madura' ? 'bg-purple-100 border-purple-300 dark:bg-purple-900/40 dark:border-purple-600'
-                                : wa.language === 'Indonesia' ? 'bg-blue-100 border-blue-300 dark:bg-blue-900/40 dark:border-blue-600'
-                                : 'bg-gray-100 border-gray-300 dark:bg-gray-700 dark:border-gray-500';
-                              const textColor = wa.language === 'Jawa' ? 'text-green-900 dark:text-green-200'
-                                : wa.language === 'Madura' ? 'text-purple-900 dark:text-purple-200'
-                                : wa.language === 'Indonesia' ? 'text-blue-900 dark:text-blue-200'
-                                : 'text-gray-900 dark:text-gray-200';
+                              const candidates = wa.candidates && wa.candidates.length > 0
+                                ? wa.candidates
+                                : [{ language: wa.language, level: wa.level }];
+                              const chipColor = candidates.some((item) => item.language === 'Jawa') ? 'border-language-jawa-border bg-language-jawa-soft'
+                                : candidates.some((item) => item.language === 'Madura') ? 'border-language-madura-border bg-language-madura-soft'
+                                : candidates.some((item) => item.language === 'Indonesia') ? 'border-language-indonesia-border bg-language-indonesia-soft'
+                                : 'border-language-foreign-border bg-language-foreign-soft';
+                              const labelClass = (language: string) => language === 'Jawa'
+                                ? 'bg-language-jawa-soft text-language-jawa border-language-jawa-border'
+                                : language === 'Madura'
+                                  ? 'bg-language-madura-soft text-language-madura border-language-madura-border'
+                                  : language === 'Indonesia'
+                                    ? 'bg-language-indonesia-soft text-language-indonesia border-language-indonesia-border'
+                                    : 'bg-language-foreign-soft text-language-foreign border-language-foreign-border';
                               return (
-                                <span key={idx} className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${langColor}`}>
-                                  <span className={`font-bold text-sm ${textColor}`}>{wa.word}</span>
-                                  <span className={`text-[10px] font-medium mt-0.5 opacity-75 ${textColor}`}>{wa.language} • {wa.level}</span>
+                                <span key={idx} className={`inline-flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg border ${chipColor}`}>
+                                  <span className="font-bold text-sm text-text-dark">{wa.word}</span>
+                                  <span className="flex flex-wrap justify-center gap-1">
+                                    {candidates.map((candidate) => (
+                                      <span
+                                        key={`${candidate.language}-${candidate.level}`}
+                                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${labelClass(candidate.language)}`}
+                                      >
+                                        {candidate.language} • {candidate.level}
+                                      </span>
+                                    ))}
+                                  </span>
                                 </span>
                               );
                             })}
                           </div>
                         </div>
                         <div className="flex gap-4 mt-3 text-[11px] text-text-muted">
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-full" /> Jawa</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-purple-500 rounded-full" /> Madura</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-blue-500 rounded-full" /> Indonesia</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-gray-400 rounded-full" /> Asing</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-language-jawa rounded-full" /> Jawa</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-language-madura rounded-full" /> Madura</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-register-high rounded-full" /> Indonesia</span>
+                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-language-foreign rounded-full" /> Asing</span>
                         </div>
                       </div>
                     )}
@@ -1576,7 +1615,7 @@ export default function LokalatorApp() {
 
             {/* Drag & Drop Upload Container */}
             {!uploadedFile ? (
-              <div className="bg-white border-2 border-dashed border-accent-brown/30 hover:border-primary hover:bg-primary/2 rounded-2xl p-10 text-center cursor-pointer smooth-transition shadow-sm flex flex-col items-center" onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
+              <div className="bg-card-bg border-2 border-dashed border-accent-brown/30 hover:border-primary hover:bg-primary/2 rounded-2xl p-10 text-center cursor-pointer smooth-transition shadow-sm flex flex-col items-center" onDragOver={handleDragOver} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}>
                 <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.docx,.doc,.txt" onChange={handleFileSelect} />
                 <div className="w-16 h-16 bg-primary-transparent border border-primary/5 rounded-2xl flex items-center justify-center text-accent-brown mb-6 hover:scale-105 smooth-transition">
                   <FileUp size={30} />
@@ -1587,11 +1626,11 @@ export default function LokalatorApp() {
               </div>
             ) : (
               // File Preview Card
-              <div className="bg-white border border-border-color rounded-2xl p-6 shadow-md flex flex-col gap-5">
+              <div className="bg-card-bg border border-border-color rounded-2xl p-6 shadow-md flex flex-col gap-5">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white ${
-                    (uploadedFile.name.endsWith('.docx') || uploadedFile.name.endsWith('.doc')) ? 'bg-blue-600' : 
-                    uploadedFile.name.endsWith('.pdf') ? 'bg-red-500' : 'bg-emerald-600'
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-on-primary ${
+                    (uploadedFile.name.endsWith('.docx') || uploadedFile.name.endsWith('.doc')) ? 'bg-info' : 
+                    uploadedFile.name.endsWith('.pdf') ? 'bg-danger-soft0' : 'bg-success'
                   }`}>
                     <FileText size={22} />
                   </div>
@@ -1620,19 +1659,19 @@ export default function LokalatorApp() {
                   <div className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold text-text-medium">Ragam target</span>
                     <div className="flex bg-bg-cream border border-border-color p-0.5 rounded-md text-xs font-semibold min-h-9">
-                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'low' ? 'bg-primary text-white' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('low')} disabled={docTargetLang === 'id'}>
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'low' ? 'bg-primary text-on-primary' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('low')} disabled={docTargetLang === 'id'}>
                         {docTargetLang === 'mad' ? 'Enja-Iya' : 'Ngoko'}
                       </button>
-                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'high' ? 'bg-primary text-white' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('high')} disabled={docTargetLang === 'id'}>
+                      <button className={`px-3 py-1.5 rounded-sm ${docTargetLevel === 'high' ? 'bg-primary text-on-primary' : 'text-text-medium'} ${docTargetLang === 'id' ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={() => setDocTargetLevel('high')} disabled={docTargetLang === 'id'}>
                         {docTargetLang === 'mad' ? 'Engghi' : 'Krama'}
                       </button>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="bg-primary hover:bg-primary-light text-white font-semibold text-xs px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer smooth-transition disabled:bg-neutral-medium disabled:cursor-not-allowed" onClick={startDocumentTranslation} disabled={docProgress >= 0 && docProgress < 100}>
-                      Mulai <Play size={12} fill="white" />
+                    <button className="bg-primary hover:bg-primary-light text-on-primary font-semibold text-xs px-4 py-2 rounded-lg flex items-center gap-2 cursor-pointer smooth-transition disabled:bg-neutral-light disabled:cursor-not-allowed" onClick={startDocumentTranslation} disabled={docProgress >= 0 && docProgress < 100}>
+                      Mulai <Play size={12} fill="var(--color-on-primary)" />
                     </button>
-                    <button className="border border-border-color hover:bg-red-50 hover:border-red-200 text-text-muted hover:text-red-500 p-2 rounded-lg cursor-pointer smooth-transition disabled:opacity-50" onClick={clearDocument} disabled={docProgress >= 0 && docProgress < 100} title="Hapus berkas">
+                    <button className="border border-border-color hover:bg-danger-soft hover:border-danger/25 text-text-muted hover:text-danger p-2 rounded-lg cursor-pointer smooth-transition disabled:opacity-50" onClick={clearDocument} disabled={docProgress >= 0 && docProgress < 100} title="Hapus berkas">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -1642,7 +1681,7 @@ export default function LokalatorApp() {
 
             {/* Translation Progress Bar */}
             {docProgress >= 0 && docProgress < 100 && (
-              <div className="bg-white border border-border-color rounded-xl p-5 shadow-sm">
+              <div className="bg-card-bg border border-border-color rounded-xl p-5 shadow-sm">
                 <div className="flex justify-between text-xs font-semibold mb-2">
                   <span className="text-primary">{docProgressStep}</span>
                   <span>{docProgress}%</span>
@@ -1654,7 +1693,7 @@ export default function LokalatorApp() {
             )}
 
             {docError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm flex items-start gap-3">
+              <div className="bg-danger-soft border border-danger/25 text-danger rounded-xl p-4 text-sm flex items-start gap-3">
                 <AlertCircle size={18} className="shrink-0 mt-0.5" />
                 <span>{docError}</span>
               </div>
@@ -1672,7 +1711,7 @@ export default function LokalatorApp() {
                     </span>
                   </div>
                   <button
-                    className="bg-accent-brown hover:bg-accent-brown-light text-white font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md smooth-transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="bg-accent-brown hover:bg-accent-brown-light text-on-primary font-semibold text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md smooth-transition disabled:opacity-60 disabled:cursor-not-allowed"
                     onClick={downloadTranslatedDocument}
                     disabled={!docDownloadUrl || docDownloading}
                   >
@@ -1680,7 +1719,7 @@ export default function LokalatorApp() {
                   </button>
                 </div>
 
-                <div className="bg-white border border-border-color rounded-xl p-4">
+                <div className="bg-card-bg border border-border-color rounded-xl p-4">
                   <div className="flex justify-between items-center gap-3 mb-3">
                     <h5 className="font-heading font-semibold text-sm text-primary">Teks Terjemahan</h5>
                     <button className="text-text-medium hover:text-primary p-1.5 rounded-md hover:bg-neutral-light cursor-pointer" onClick={() => copyToClipboard(docTranslatedText)} title="Salin hasil terjemahan">
@@ -1713,7 +1752,7 @@ export default function LokalatorApp() {
 
           {/* Metrics row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
+            <div className="bg-card-bg border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
               <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-full flex items-center justify-center text-primary">
                 <BookOpen size={18} />
               </div>
@@ -1725,7 +1764,7 @@ export default function LokalatorApp() {
               </div>
             </div>
 
-            <div className="bg-white border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
+            <div className="bg-card-bg border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
               <div className="w-11 h-11 bg-accent-gold-glow/45 border border-accent-gold/5 rounded-full flex items-center justify-center text-accent-brown">
                 <Users size={18} />
               </div>
@@ -1737,7 +1776,7 @@ export default function LokalatorApp() {
               </div>
             </div>
 
-            <div className="bg-white border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
+            <div className="bg-card-bg border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
               <div className="w-11 h-11 bg-primary-transparent border border-primary/5 rounded-full flex items-center justify-center text-primary">
                 <Globe size={18} />
               </div>
@@ -1749,7 +1788,7 @@ export default function LokalatorApp() {
               </div>
             </div>
 
-            <div className="bg-white border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
+            <div className="bg-card-bg border border-border-color rounded-2xl p-5 shadow-xs flex items-center gap-4">
               <div className="w-11 h-11 bg-accent-gold-glow/45 border border-accent-gold/5 rounded-full flex items-center justify-center text-accent-brown">
                 <Activity size={18} />
               </div>
@@ -1765,24 +1804,24 @@ export default function LokalatorApp() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
             {/* Word of the Day (Left Box) */}
-              <div className="bg-gradient-to-br from-primary to-primary-light dark:from-[#111614] dark:to-[#080A09] dark:border dark:border-border-color text-white dark:text-text-dark rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
+            <div className="bg-card-bg border border-border-color text-text-dark rounded-3xl p-6 shadow-md flex flex-col justify-between min-h-[300px]">
               <div>
                 <span className="text-[10px] text-accent-gold tracking-widest font-extrabold uppercase block mb-1">Kata Daerah Hari Ini</span>
-                <div className="font-heading font-bold text-4xl text-white dark:text-[#65B29A] mb-2">{WOTD_WORDS[wotdIndex].word}</div>
+                <div className="font-heading font-bold text-4xl text-primary mb-2">{WOTD_WORDS[wotdIndex].word}</div>
                 <div className="flex items-center gap-2 mb-6">
-                  <span className="text-xs text-[#FFDF7B] dark:text-accent-gold italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
+                  <span className="text-xs text-accent-brown italic font-semibold">{WOTD_WORDS[wotdIndex].spell} ({WOTD_WORDS[wotdIndex].type})</span>
                 </div>
               </div>
-              <div className="border-t border-white/10 dark:border-border-color pt-4">
-                <span className="text-[10px] text-neutral-200 dark:text-text-muted font-bold block uppercase mb-1">Arti (Bahasa Indonesia):</span>
-                <p className="text-sm leading-relaxed mb-3 text-white dark:text-text-medium font-medium">{WOTD_WORDS[wotdIndex].mean}</p>
-                <span className="text-[10px] text-neutral-200 dark:text-text-muted font-bold block uppercase mb-1">Contoh Kalimat:</span>
-                <p className="text-xs italic text-white dark:text-text-medium">{WOTD_WORDS[wotdIndex].ex}</p>
+              <div className="border-t border-border-color pt-4">
+                <span className="text-[10px] text-text-muted font-bold block uppercase mb-1">Arti (Bahasa Indonesia):</span>
+                <p className="text-sm leading-relaxed mb-3 text-text-medium font-medium">{WOTD_WORDS[wotdIndex].mean}</p>
+                <span className="text-[10px] text-text-muted font-bold block uppercase mb-1">Contoh Kalimat:</span>
+                <p className="text-xs italic text-text-medium">{WOTD_WORDS[wotdIndex].ex}</p>
               </div>
             </div>
 
             {/* Popular Vocabulary (Right Box) */}
-            <div className="bg-white border border-border-color rounded-3xl p-6 shadow-md flex flex-col justify-between">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-6 shadow-md flex flex-col justify-between">
               <h3 className="font-heading font-bold text-lg text-primary mb-4">Kosakata Terpopuler</h3>
               <div className="flex flex-col gap-3">
                 {insightsLoading && !insightsData ? (
@@ -1818,30 +1857,30 @@ export default function LokalatorApp() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* SVG Line Chart: Vitality Trends */}
-            <div className="bg-white border border-border-color rounded-3xl p-6 shadow-md">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-6 shadow-md">
               <h3 className="font-heading font-bold text-base text-primary mb-1">Penurunan Penggunaan Bahasa Ibu per Generasi</h3>
               <p className="text-xs text-text-muted mb-6">Persentase Pemuda Fasih Bahasa Daerah (1960 - 2026)</p>
 
               <div className="relative w-full h-[200px]">
                 <svg className="w-full h-full" viewBox="0 0 500 200">
                   {/* Grid Lines */}
-                  <line x1="40" y1="20" x2="480" y2="20" stroke="#F1F3F4" strokeWidth="1" />
-                  <line x1="40" y1="60" x2="480" y2="60" stroke="#F1F3F4" strokeWidth="1" />
-                  <line x1="40" y1="100" x2="480" y2="100" stroke="#F1F3F4" strokeWidth="1" />
-                  <line x1="40" y1="140" x2="480" y2="140" stroke="#F1F3F4" strokeWidth="1" />
-                  <line x1="40" y1="180" x2="480" y2="180" stroke="#E6ECE8" strokeWidth="1.5" />
+                  <line x1="40" y1="20" x2="480" y2="20" stroke="var(--color-neutral-light)" strokeWidth="1" />
+                  <line x1="40" y1="60" x2="480" y2="60" stroke="var(--color-neutral-light)" strokeWidth="1" />
+                  <line x1="40" y1="100" x2="480" y2="100" stroke="var(--color-neutral-light)" strokeWidth="1" />
+                  <line x1="40" y1="140" x2="480" y2="140" stroke="var(--color-neutral-light)" strokeWidth="1" />
+                  <line x1="40" y1="180" x2="480" y2="180" stroke="var(--color-border-color)" strokeWidth="1.5" />
 
                   {/* Y Axis Labels */}
-                  <text x="10" y="24" fill="#7D8F86" fontSize="10">100%</text>
-                  <text x="15" y="104" fill="#7D8F86" fontSize="10">50%</text>
-                  <text x="20" y="184" fill="#7D8F86" fontSize="10">0%</text>
+                  <text x="10" y="24" fill="var(--color-text-muted)" fontSize="10">100%</text>
+                  <text x="15" y="104" fill="var(--color-text-muted)" fontSize="10">50%</text>
+                  <text x="20" y="184" fill="var(--color-text-muted)" fontSize="10">0%</text>
 
                   {/* X Axis Labels */}
-                  <text x="40" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">1960</text>
-                  <text x="150" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">1980</text>
-                  <text x="260" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">2000</text>
-                  <text x="370" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">2020</text>
-                  <text x="470" y="196" fill="#7D8F86" fontSize="9" textAnchor="middle">2026</text>
+                  <text x="40" y="196" fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">1960</text>
+                  <text x="150" y="196" fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">1980</text>
+                  <text x="260" y="196" fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">2000</text>
+                  <text x="370" y="196" fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">2020</text>
+                  <text x="470" y="196" fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">2026</text>
 
                   {/* Javanese Line Path */}
                   <path d="M 40 25 L 150 40 L 260 70 L 370 100 L 470 115" fill="none" stroke="var(--color-primary)" strokeWidth="3" />
@@ -1875,14 +1914,14 @@ export default function LokalatorApp() {
             </div>
 
             {/* SVG Pie Chart: Request distribution */}
-            <div className="bg-white border border-border-color rounded-3xl p-6 shadow-md">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-6 shadow-md">
               <h3 className="font-heading font-bold text-base text-primary mb-1">Distribusi Kategori Terjemahan</h3>
               <p className="text-xs text-text-muted mb-6">Persentase Tingkat Tutur yang Dicari Pengguna</p>
 
               <div className="flex flex-col sm:flex-row items-center gap-8 justify-center h-[200px]">
                 {/* SVG Doughnut */}
                 <svg width="150" height="150" viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="#F1F3F4" strokeWidth="4" />
+                  <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-neutral-light)" strokeWidth="4" />
 
                   {/* Jawa Ngoko (42%) */}
                   <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--color-primary)" strokeWidth="4" strokeDasharray="42 58" strokeDashoffset="25" />
@@ -1933,7 +1972,7 @@ export default function LokalatorApp() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
 
             {/* Vision & Mission */}
-            <div className="bg-white border border-border-color rounded-3xl p-6 md:p-8 shadow-md">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-6 md:p-8 shadow-md">
               <h3 className="font-heading font-bold text-xl text-primary mb-4 pb-2 border-b border-accent-gold-glow">Visi & Misi</h3>
               <p className="text-text-medium text-sm leading-relaxed mb-4">
                 Bahasa daerah merupakan aset warisan budaya nasional yang tiada tara. Namun, seiring berjalannya waktu, kefasihan penggunaan tingkat tutur yang baik seperti *Undha-Usuk* pada bahasa Jawa dan tata tutur bahasa Madura kian merosot di kalangan pemuda.
@@ -1959,7 +1998,7 @@ export default function LokalatorApp() {
             </div>
 
             {/* University Project Information */}
-            <div className="bg-white border border-border-color rounded-3xl p-6 md:p-8 shadow-md">
+            <div className="bg-card-bg border border-border-color rounded-3xl p-6 md:p-8 shadow-md">
               <h3 className="font-heading font-bold text-xl text-primary mb-4 pb-2 border-b border-accent-gold-glow">Informasi Capstone</h3>
               <p className="text-text-medium text-sm leading-relaxed mb-4">
                 Lokalator dirancang sebagai Final Project mata kuliah Kecerdasan Artifisial dan Machine Learning Kelompok 7 Kelas A.
@@ -2024,7 +2063,7 @@ export default function LokalatorApp() {
             <p className="text-text-medium text-sm md:text-base leading-relaxed">Template kebijakan privasi Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
           </div>
 
-          <div className="bg-white border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
+          <div className="bg-card-bg border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
             <section>
               <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Data yang Dikumpulkan</h2>
               <p className="text-sm text-text-medium leading-relaxed">Tuliskan jenis data yang diproses, misalnya teks terjemahan, metadata penggunaan, dan data unggahan dokumen.</p>
@@ -2054,7 +2093,7 @@ export default function LokalatorApp() {
             <p className="text-text-medium text-sm md:text-base leading-relaxed">Template syarat ketentuan penggunaan Lokalator. Konten detail dapat diisi sebelum publikasi resmi.</p>
           </div>
 
-          <div className="bg-white border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
+          <div className="bg-card-bg border border-border-color rounded-2xl p-6 md:p-8 shadow-md space-y-6">
             <section>
               <h2 className="font-heading font-bold text-lg text-primary mb-2">1. Ketentuan Penggunaan</h2>
               <p className="text-sm text-text-medium leading-relaxed">Tuliskan aturan dasar penggunaan fitur penerjemah, detektor kesopanan, chatbot, dan pemrosesan dokumen.</p>
@@ -2076,12 +2115,12 @@ export default function LokalatorApp() {
       )}
 
       {/* Footer */}
-      <footer className="bg-primary text-white/80 pt-16 pb-8 border-t-4 border-accent-gold mt-auto px-6 relative">
+      <footer className="bg-primary text-on-primary/80 pt-16 pb-8 border-t-4 border-accent-gold mt-auto px-6 relative">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
 
           <div className="md:col-span-2">
-            <div className="flex items-center gap-3 text-white font-heading font-bold text-xl mb-4 cursor-pointer" onClick={() => handleNavigate('landing')}>
-              <div className="h-12 w-12 rounded-md bg-white flex items-center justify-center overflow-hidden">
+            <div className="flex items-center gap-3 text-on-primary font-heading font-bold text-xl mb-4 cursor-pointer" onClick={() => handleNavigate('landing')}>
+              <div className="h-12 w-12 rounded-md bg-card-bg flex items-center justify-center overflow-hidden">
                 <Image
                   src="/assets/lokalator_logo_centered.png"
                   alt="Logo Lokalator"
@@ -2092,16 +2131,16 @@ export default function LokalatorApp() {
               </div>
               <span>Lokalator</span>
             </div>
-            <p className="text-xs text-white/70 leading-relaxed max-w-sm mb-4">
+            <p className="text-xs text-on-primary/70 leading-relaxed max-w-sm mb-4">
               Menjaga warisan budaya tutur kata luhur nusantara. Platform penerjemah dan penganalisis tingkat kesopanan bahasa Jawa & Madura presisi berbasis NLP AI.
             </p>
           </div>
 
           <div>
-            <h4 className="text-white font-heading font-bold text-sm mb-4 relative after:content-[''] after:absolute after:-bottom-1.5 after:left-0 after:w-6 after:h-[2px] after:bg-accent-gold">
+            <h4 className="text-on-primary font-heading font-bold text-sm mb-4 relative after:content-[''] after:absolute after:-bottom-1.5 after:left-0 after:w-6 after:h-[2px] after:bg-accent-gold">
               Navigasi
             </h4>
-            <ul className="flex flex-col gap-2.5 text-xs text-white/75 list-none p-0 mt-3">
+            <ul className="flex flex-col gap-2.5 text-xs text-on-primary/75 list-none p-0 mt-3">
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('landing')}>Beranda</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('translator')}>Penerjemah</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('doc-translator')}>Terjemah Dokumen</li>
@@ -2112,10 +2151,10 @@ export default function LokalatorApp() {
           </div>
 
           <div>
-            <h4 className="text-white font-heading font-bold text-sm mb-4 relative after:content-[''] after:absolute after:-bottom-1.5 after:left-0 after:w-6 after:h-[2px] after:bg-accent-gold">
+            <h4 className="text-on-primary font-heading font-bold text-sm mb-4 relative after:content-[''] after:absolute after:-bottom-1.5 after:left-0 after:w-6 after:h-[2px] after:bg-accent-gold">
               Bahasa Daerah
             </h4>
-            <ul className="flex flex-col gap-2.5 text-xs text-white/75 list-none p-0 mt-3">
+            <ul className="flex flex-col gap-2.5 text-xs text-on-primary/75 list-none p-0 mt-3">
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('translator')}>Jawa Ngoko</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('translator')}>Jawa Krama</li>
               <li className="hover:text-accent-gold cursor-pointer transition-colors" onClick={() => handleNavigate('translator')}>Madura Enja-Iya</li>
@@ -2125,7 +2164,7 @@ export default function LokalatorApp() {
 
         </div>
 
-        <div className="max-w-6xl mx-auto pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center text-xs text-white/60 gap-4 text-center">
+        <div className="max-w-6xl mx-auto pt-8 border-t border-on-primary/10 flex flex-col md:flex-row justify-between items-center text-xs text-on-primary/60 gap-4 text-center">
           <div>&copy; 2026 Lokalator. Final Project Kecerdasan Artifisial dan Machine Learning Kelompok 7.</div>
           <div className="flex gap-4">
             <button type="button" onClick={() => handleNavigate('privacy')} className="hover:text-accent-gold transition-colors cursor-pointer">Kebijakan Privasi</button>
@@ -2139,7 +2178,7 @@ export default function LokalatorApp() {
         <button
           type="button"
           onClick={() => setChatWidgetOpen(true)}
-          className="fixed bottom-5 right-5 z-50 h-16 w-16 rounded-full bg-primary text-white shadow-premium border border-white/20 flex items-center justify-center hover:bg-primary-light hover:-translate-y-0.5 smooth-transition cursor-pointer dark:border-white/15 dark:shadow-[0_20px_45px_rgba(0,0,0,0.55)]"
+          className="fixed bottom-5 right-5 z-50 h-16 w-16 rounded-full bg-primary text-on-primary shadow-premium border border-on-primary/20 flex items-center justify-center hover:bg-primary-light hover:-translate-y-0.5 smooth-transition cursor-pointer"
           title="Buka Chatbot AI"
           aria-label="Buka Chatbot AI"
         >
@@ -2155,9 +2194,9 @@ export default function LokalatorApp() {
               : 'left-4 right-4 md:left-auto md:right-6 md:w-[420px]'
           }`}
         >
-          <div className="bg-primary text-white px-4 py-3 flex items-center justify-between gap-3 dark:bg-[#0B0F0D] dark:border-b dark:border-border-color">
+          <div className="bg-primary text-on-primary px-4 py-3 flex items-center justify-between gap-3 border-b border-border-color">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
+              <div className="h-9 w-9 rounded-lg bg-card-bg flex items-center justify-center overflow-hidden shrink-0">
                 <Image
                   src="/assets/lokalator_logo_centered.png"
                   alt="Logo Lokalator"
@@ -2168,14 +2207,27 @@ export default function LokalatorApp() {
               </div>
               <div className="min-w-0">
                 <div className="font-heading font-bold text-sm leading-tight">Lokalator AI</div>
-                <div className="text-[11px] text-white/75 truncate">Chatbot bahasa Jawa, Madura, dan Indonesia</div>
+                <div className="text-[11px] text-on-primary/75 truncate">Chatbot bahasa Jawa, Madura, dan Indonesia</div>
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
+                onClick={() => {
+                  setChatMessages([{ role: 'assistant', text: 'Halo! Saya asisten budaya Lokalator. Ada yang bisa saya bantu tentang Bahasa Jawa, Madura, atau penggunaannya?' }]);
+                  localStorage.removeItem('lokalator_chat_history');
+                  triggerToast('Riwayat obrolan telah dihapus', 'check');
+                }}
+                className="p-2 rounded-lg hover:bg-card-bg/10 smooth-transition cursor-pointer"
+                title="Hapus riwayat obrolan"
+                aria-label="Hapus riwayat obrolan"
+              >
+                <Trash2 size={16} />
+              </button>
+              <button
+                type="button"
                 onClick={() => setChatExpanded((value) => !value)}
-                className="p-2 rounded-lg hover:bg-white/10 smooth-transition cursor-pointer"
+                className="p-2 rounded-lg hover:bg-card-bg/10 smooth-transition cursor-pointer"
                 title={chatExpanded ? 'Perkecil chatbot' : 'Perbesar chatbot'}
                 aria-label={chatExpanded ? 'Perkecil chatbot' : 'Perbesar chatbot'}
               >
@@ -2187,7 +2239,7 @@ export default function LokalatorApp() {
                   setChatWidgetOpen(false);
                   setChatExpanded(false);
                 }}
-                className="p-2 rounded-lg hover:bg-white/10 smooth-transition cursor-pointer"
+                className="p-2 rounded-lg hover:bg-card-bg/10 smooth-transition cursor-pointer"
                 title="Tutup chatbot"
                 aria-label="Tutup chatbot"
               >
@@ -2225,7 +2277,7 @@ export default function LokalatorApp() {
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
-                    ? 'bg-primary text-white rounded-br-md'
+                    ? 'bg-primary text-on-primary rounded-br-md'
                     : 'bg-neutral-light text-text-dark rounded-bl-md border border-border-color'
                 }`}>
                   {msg.text}
@@ -2250,13 +2302,13 @@ export default function LokalatorApp() {
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
                 placeholder="Ketik pesan..."
-                className="flex-1 min-w-0 bg-white border border-border-color rounded-xl px-4 py-3 text-sm text-text-dark placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary smooth-transition"
+                className="flex-1 min-w-0 bg-card-bg border border-border-color rounded-xl px-4 py-3 text-sm text-text-dark placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary smooth-transition"
               />
               <button
                 type="button"
                 onClick={handleSendChat}
                 disabled={chatLoading || !chatInput.trim()}
-                className="bg-primary hover:bg-primary-light disabled:bg-gray-300 text-white px-4 py-3 rounded-xl flex items-center gap-2 font-semibold text-sm cursor-pointer smooth-transition disabled:cursor-not-allowed"
+                className="bg-primary hover:bg-primary-light disabled:bg-neutral-light text-on-primary px-4 py-3 rounded-xl flex items-center gap-2 font-semibold text-sm cursor-pointer smooth-transition disabled:cursor-not-allowed"
                 aria-label="Kirim pesan"
               >
                 <Send size={16} />
@@ -2268,7 +2320,7 @@ export default function LokalatorApp() {
 
       {/* Floating Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-primary text-white px-5 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 text-xs font-semibold border border-primary/20 animation-fadeIn smooth-transition">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-primary text-on-primary px-5 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 text-xs font-semibold border border-primary/20 animation-fadeIn smooth-transition">
           <Info size={16} className="text-accent-gold" />
           <span>{toastMsg.text}</span>
         </div>

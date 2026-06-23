@@ -56,10 +56,30 @@ def _translate_block(text: str, source_lang: str, target_lang: str, level: str) 
 
 
 def _translate_lines(text: str, source_lang: str, target_lang: str, level: str) -> str:
-    translated_lines = []
-    for line in text.splitlines():
-        translated_lines.append(_translate_block(line, source_lang, target_lang, level) if line.strip() else "")
-    return "\n".join(translated_lines)
+    # Memisahkan teks berdasarkan paragraf atau baris kosong untuk menjaga konteks utuh
+    # dan mencegah pemanggilan API per-baris yang menyebabkan rate-limit/lemot.
+    paragraphs = re.split(r'(\n\s*\n)', text)
+    translated_chunks = []
+    
+    current_chunk = ""
+    for p in paragraphs:
+        if not p.strip():
+            current_chunk += p
+            continue
+            
+        if len(current_chunk) + len(p) > 2000:
+            if current_chunk.strip():
+                translated_chunks.append(_translate_block(current_chunk, source_lang, target_lang, level))
+            current_chunk = p
+        else:
+            current_chunk += p
+            
+    if current_chunk.strip():
+        translated_chunks.append(_translate_block(current_chunk, source_lang, target_lang, level))
+    elif current_chunk:
+        translated_chunks.append(current_chunk)
+        
+    return "".join(translated_chunks)
 
 
 def _read_txt(input_path: str) -> str:
@@ -81,8 +101,6 @@ def _write_translated_pdf(output_path: str, translated_text: str):
     margin_x = 48
     y = 56
     line_height = 14
-
-    page.insert_text((margin_x, 34), "Lokalator Document Translation", fontsize=13)
     for paragraph in translated_text.split("\n"):
         wrapped = textwrap.wrap(paragraph, width=88) or [""]
         for line in wrapped:
@@ -131,37 +149,37 @@ def process_and_translate_docx(
         return _summary(output_path, target_lang, level, translated_text, source_text)
 
     source_doc = docx.Document(input_path)
-    translated_doc = docx.Document()
-    translated_doc.add_heading("Lokalator Document Translation", 0)
-
-    source_blocks = []
+    valid_paragraphs = []
 
     for paragraph in source_doc.paragraphs:
-        source_blocks.append(paragraph.text)
-        translated_doc.add_paragraph(
-            _translate_block(paragraph.text, source_lang, target_lang, level) if paragraph.text.strip() else ""
-        )
+        if paragraph.text.strip():
+            valid_paragraphs.append(paragraph)
 
     for table in source_doc.tables:
-        translated_table = translated_doc.add_table(rows=len(table.rows), cols=len(table.columns))
-        for row_index, row in enumerate(table.rows):
-            for col_index, cell in enumerate(row.cells):
-                cell_text = "\n".join(p.text for p in cell.paragraphs)
-                source_blocks.append(cell_text)
-                translated_table.cell(row_index, col_index).text = _translate_lines(
-                    cell_text,
-                    source_lang,
-                    target_lang,
-                    level
-                )
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    if paragraph.text.strip():
+                        valid_paragraphs.append(paragraph)
 
-    translated_doc.save(output_path)
-    source_text = "\n".join(source_blocks)
-    translated_text = "\n".join(
-        _translate_block(block, source_lang, target_lang, level) if block.strip() else ""
-        for block in source_blocks
-    )
-    return _summary(output_path, target_lang, level, translated_text, source_text)
+    source_text_list = [p.text for p in valid_paragraphs]
+    source_text_full = "\n".join(source_text_list)
+    
+    # Terjemahkan sekaligus menggunakan chunking untuk menghindari rate-limit
+    translated_text_full = _translate_lines(source_text_full, source_lang, target_lang, level)
+    translated_text_list = translated_text_full.split("\n")
+
+    # Map teks yang diterjemahkan kembali ke run paragraf asli untuk mempertahankan format (font, warna)
+    for i, paragraph in enumerate(valid_paragraphs):
+        translated_text = translated_text_list[i] if i < len(translated_text_list) else paragraph.text
+        if paragraph.runs:
+            paragraph.runs[0].text = translated_text
+            for j in range(1, len(paragraph.runs)):
+                paragraph.runs[j].text = ""
+
+    source_doc.save(output_path)
+    return _summary(output_path, target_lang, level, translated_text_full, source_text_full)
+
 
 
 def process_and_translate_txt(
