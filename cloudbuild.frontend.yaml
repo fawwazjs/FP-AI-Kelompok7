@@ -1,0 +1,16 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE_URL=https://lokalator-backend-269469573681.us-central1.run.app
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/lokalator/frontend:latest
+      - .
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/lokalator/frontend:latest
+
+timeout: 1200s
