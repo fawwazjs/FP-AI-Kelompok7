@@ -45,3 +45,6 @@ deploy/.env.deploy
 # OS files
 .DS_Store
 Thumbs.db
+
+# IDE/Agent conversation logs and scratch files
+brain/

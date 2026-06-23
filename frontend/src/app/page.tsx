@@ -1309,22 +1309,24 @@ export default function LokalatorApp() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
-                <div className="font-heading font-extrabold text-4xl text-primary mb-2">80 Jt+</div>
+                <div className="font-heading font-extrabold text-2xl min-[380px]:text-3xl lg:text-4xl text-primary mb-2">80 Jt+</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Penutur Bahasa Jawa</div>
                 <div className="text-xs text-text-muted">Rumpun bahasa daerah penutur terbesar di Indonesia.</div>
               </div>
               <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
-                <div className="font-heading font-extrabold text-4xl text-primary mb-2">7.3 Jt+</div>
+                <div className="font-heading font-extrabold text-2xl min-[380px]:text-3xl lg:text-4xl text-primary mb-2">7.3 Jt+</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Penutur Bahasa Madura</div>
                 <div className="text-xs text-text-muted">Banyak dituturkan di Madura dan Tapal Kuda Jatim.</div>
               </div>
               <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
-                <div className="font-heading font-extrabold text-4xl text-primary mb-2">4 Kategori</div>
+                <div className="font-heading font-extrabold text-2xl min-[380px]:text-3xl lg:text-4xl text-primary mb-2">
+                  4 <span className="block sm:inline">Kate{"\u00AD"}gori</span>
+                </div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Tingkat Kesopanan</div>
                 <div className="text-xs text-text-muted">Deteksi linguistik: Ngoko, Krama, Formal, Informal.</div>
               </div>
               <div className="bg-primary/5 border border-primary/10 rounded-xl p-6 text-center hover:bg-card-bg hover:border-primary/20 hover:shadow-md smooth-transition">
-                <div className="font-heading font-extrabold text-4xl text-primary mb-2">98.2%</div>
+                <div className="font-heading font-extrabold text-2xl min-[380px]:text-3xl lg:text-4xl text-primary mb-2">98.2%</div>
                 <div className="font-semibold text-sm text-text-dark mb-1">Akurasi Semantik</div>
                 <div className="text-xs text-text-muted">Penilaian linguistik didukung kamus terverifikasi.</div>
               </div>
